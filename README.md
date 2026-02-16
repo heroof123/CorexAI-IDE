@@ -2,14 +2,16 @@
 
 **AI-Powered Code Editor** - Modern, fast, and intelligent development environment built with Tauri, React, and Rust
 
+[![Stars](https://img.shields.io/github/stars/heroof123/CorexAI?style=social)](https://github.com/heroof123/CorexAI)
+[![Forks](https://img.shields.io/github/forks/heroof123/CorexAI?style=social)](https://github.com/heroof123/CorexAI)
+[![License](https://img.shields.io/github/license/heroof123/CorexAI)](https://github.com/heroof123/CorexAI/blob/main/LICENSE)
+[![Issues](https://img.shields.io/github/issues/heroof123/CorexAI)](https://github.com/heroof123/CorexAI/issues)
+
 ![Version](https://img.shields.io/badge/version-0.1.0-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue)
 ![React](https://img.shields.io/badge/React-19-61dafb)
 ![Rust](https://img.shields.io/badge/Rust-2021-orange)
-![Stars](https://img.shields.io/github/stars/heroof123/CorexAI?style=social)
-![Forks](https://img.shields.io/github/forks/heroof123/CorexAI?style=social)
 
 > A lightweight, privacy-focused IDE with local AI capabilities. No cloud required, your code stays on your machine.
 
