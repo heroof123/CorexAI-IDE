@@ -59,8 +59,8 @@
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/corex.git
-cd corex
+git clone https://github.com/heroof123/CorexA-.git
+cd CorexA-
 
 # Install dependencies
 npm install
@@ -75,8 +75,8 @@ npm run tauri:dev
 
 **Windows Users:**
 ```cmd
-git clone https://github.com/yourusername/corex.git
-cd corex
+git clone https://github.com/heroof123/CorexA-.git
+cd CorexA-
 npm install
 npm run tauri:dev
 ```
@@ -298,8 +298,8 @@ MIT License - see [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- **Issues:** [GitHub Issues](https://github.com/yourusername/corex/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/yourusername/corex/discussions)
+- **Issues:** [GitHub Issues](https://github.com/heroof123/CorexA-/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/heroof123/CorexA-/discussions)
 
 ## 🌟 Why Corex?
 
