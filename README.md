@@ -174,7 +174,7 @@ export MICROSOFT_CLIENT_SECRET="your_secret"
 2. **Ollama**
    - Download: [ollama.ai](https://ollama.ai/)
    - Run: `ollama serve`
-   - Pull models: `ollama pull llama2`
+   - Pull models: `ollama pull llama3` or `ollama pull qwen2.5-coder`
 
 3. **GGUF Direct**
    - Download GGUF models from HuggingFace
@@ -250,7 +250,7 @@ corex/
 **Backend:**
 - Tauri 2
 - Rust 2021
-- llama-cpp-2
+- llama.cpp (via llama-cpp-rs)
 - reqwest
 
 ---
@@ -378,7 +378,11 @@ This project is in active development. Core features are functional but expect s
 
 ## ⭐ Star History
 
-If you find CorexAI useful, please star the repository!
+**If you find CorexAI useful, please give it a star!** ⭐
+
+It helps the project grow and motivates us to keep improving it.
+
+[![Star History Chart](https://api.star-history.com/svg?repos=heroof123/CorexAI&type=Date)](https://star-history.com/#heroof123/CorexAI&Date)
 
 ---
 
