@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ürün Turu | CorexAI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Inter:wght@400;500;700&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --bg: #0b0f1a;
+            --surface: #161e2d;
+            --text: #f8fafc;
+            --text-secondary: #94a3b8;
+            --border: rgba(255, 255, 255, 0.08);
+            --gradient: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        nav {
+            padding: 1.25rem 0;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            text-decoration: none;
+            color: #fff;
+        }
+
+        .logo span {
+            background: var(--gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            list-style: none;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: var(--text-secondary);
+            transition: 0.3s;
+        }
+
+        .nav-links a:hover {
+            color: var(--primary);
+        }
+
+        .header {
+            padding: 6rem 0 3rem;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 3.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .tour-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 3rem;
+            padding-bottom: 8rem;
+        }
+
+        .tour-item {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 2rem;
+        }
+
+        .tour-item img {
+            width: 100%;
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .tour-item h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.8rem;
+            margin-bottom: 1rem;
+            color: var(--primary);
+        }
+
+        .tour-item p {
+            color: var(--text-secondary);
+        }
+
+        footer {
+            padding: 4rem 0;
+            text-align: center;
+            color: var(--text-secondary);
+            border-top: 1px solid var(--border);
+        }
+
+        @media (max-width: 600px) {
+            .tour-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <nav>
+            <a href="index.html" class="logo">Corex<span>AI</span></a>
+            <ul class="nav-links">
+                <li><a href="index.html">Anasayfa</a></li>
+                <li><a href="features.html">Özellikler</a></li>
+                <li><a href="tour.html" style="color: var(--primary);">Tur</a></li>
+            </ul>
+        </nav>
+
+        <header class="header">
+            <h1>CorexAI Ürün Turu</h1>
+            <p>Uygulamanın iç dünyasına kısa bir yolculuk yapın.</p>
+        </header>
+
+        <div class="tour-grid">
+            <div id="chat" class="tour-item">
+                <img src="https://github.com/user-attachments/assets/c30b9f58-e302-4ab6-a1d0-0e30c5ab5b41"
+                    alt="AI Chat Panel">
+                <h3>Yapay Zeka Sohbet Paneli</h3>
+                <p>Kodunuzla konuşun! Sadece bir sohbet robotu değil, tüm dosyalarınızı bilen bir uzman. Sağ panelde yer
+                    alan bu alan ile hata ayıklayabilir, yeni özellikler kurgulayabilir veya kodunuzu refactor
+                    edebilirsiniz.</p>
+            </div>
+
+            <div class="tour-item">
+                <img src="https://github.com/user-attachments/assets/4c908837-49cd-40f0-b528-509d76b0ad38"
+                    alt="Code Editor">
+                <h3>Vite + Monaco Editör Gücü</h3>
+                <p>Milyonlarca geliştiricinin bildiği VS Code deneyimi şimdi çok daha hafif ve Tauri tabanlı sistemde.
+                    En sevdiğiniz kısayollar ve temalarla yerel dosyalarınızı düzenleyin.</p>
+            </div>
+
+            <div id="gguf" class="tour-item">
+                <img src="https://github.com/user-attachments/assets/200c79ca-8e21-4fc9-a6af-ad9971b8ef0b"
+                    alt="Settings Interface">
+                <h3>Esnek Yapılandırma</h3>
+                <p>Otonom derecesini belirleyin, modelleri yönetin ve API anahtarlarınızı güvenle saklayın. Her şey
+                    yerel, her şey sizin kontrolünüzde.</p>
+            </div>
+
+            <div class="tour-item">
+                <img src="https://github.com/user-attachments/assets/9a24992e-30b1-4015-998b-48978247eb38"
+                    alt="Main Dashboard">
+                <h3>Genel Kontrol Paneli</h3>
+                <p>Karşılama ekranı, son projeleriniz ve hızlı erişim araçları ile çalışma ortamınıza her zaman hakim
+                    olun. Açık ve Koyu tema seçenekleriyle kişiselleştirin.</p>
+            </div>
+        </div>
+
+        <footer>
+            <p>&copy; 2026 CorexAI. Sınır tanımayan açık kaynak IDE.</p>
+        </footer>
+    </div>
+</body>
+
+</html>

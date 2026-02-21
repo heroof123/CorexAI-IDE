@@ -1,29 +1,35 @@
 <!DOCTYPE html>
 <html lang="tr">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CorexAI | Yapay Zeka Destekli Modern Kod Editörü</title>
-    <meta name="description" content="CorexAI - Yerel LLM desteğiyle gizlilik odaklı, hızlı ve akıllı geliştirme deneyimi.">
+    <meta name="description"
+        content="CorexAI - Yerel LLM desteğiyle gizlilik odaklı, hızlı ve akıllı geliştirme deneyimi.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Inter:wght@400;500;700&display=swap"
+        rel="stylesheet">
     <style>
         :root {
             --primary: #3b82f6;
             --primary-dark: #2563eb;
-            --bg: #0f172a;
-            --surface: #1e293b;
+            --bg: #0b0f1a;
+            --surface: #161e2d;
             --text: #f8fafc;
             --text-secondary: #94a3b8;
-            --border: rgba(255, 255, 255, 0.1);
+            --border: rgba(255, 255, 255, 0.08);
             --gradient: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            --glass: rgba(22, 30, 45, 0.7);
         }
 
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            scroll-behavior: smooth;
         }
 
         body {
@@ -34,7 +40,9 @@
             overflow-x: hidden;
         }
 
-        h1, h2, h3 {
+        h1,
+        h2,
+        h3 {
             font-family: 'Outfit', sans-serif;
             font-weight: 800;
         }
@@ -47,15 +55,17 @@
 
         /* Navbar */
         nav {
-            padding: 1.5rem 0;
+            padding: 1.25rem 0;
             display: flex;
             justify-content: space-between;
             align-items: center;
             border-bottom: 1px solid var(--border);
-            backdrop-filter: blur(10px);
-            position: sticky;
+            backdrop-filter: blur(20px);
+            position: fixed;
+            width: 100%;
             top: 0;
-            z-index: 100;
+            z-index: 1000;
+            background: rgba(11, 15, 26, 0.8);
         }
 
         .logo {
@@ -84,16 +94,18 @@
             text-decoration: none;
             color: var(--text-secondary);
             font-weight: 500;
-            transition: color 0.3s;
+            font-size: 0.95rem;
+            transition: all 0.3s;
         }
 
-        .nav-links a:hover {
+        .nav-links a:hover,
+        .nav-links a.active {
             color: var(--primary);
         }
 
         /* Hero Section */
         .hero {
-            padding: 8rem 0 4rem;
+            padding: 10rem 0 6rem;
             text-align: center;
             position: relative;
         }
@@ -101,25 +113,14 @@
         .hero::before {
             content: '';
             position: absolute;
-            top: -10%;
+            top: 20%;
             left: 50%;
-            transform: translateX(-50%);
-            width: 80%;
-            height: 100%;
-            background: radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%);
+            transform: translate(-50%, -50%);
+            width: 60%;
+            height: 60%;
+            background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
             z-index: -1;
-        }
-
-        .badge {
-            display: inline-block;
-            padding: 0.5rem 1rem;
-            background: rgba(59, 130, 246, 0.1);
-            border: 1px solid rgba(59, 130, 246, 0.2);
-            border-radius: 99px;
-            color: var(--primary);
-            font-weight: 600;
-            font-size: 0.875rem;
-            margin-bottom: 2rem;
+            filter: blur(60px);
         }
 
         .hero h1 {
@@ -127,6 +128,9 @@
             letter-spacing: -0.02em;
             margin-bottom: 1.5rem;
             line-height: 1.1;
+            max-width: 900px;
+            margin-left: auto;
+            margin-right: auto;
         }
 
         .hero h1 span {
@@ -138,36 +142,37 @@
         .hero p {
             font-size: 1.25rem;
             color: var(--text-secondary);
-            max-width: 600px;
-            margin: 0 auto 3rem;
+            max-width: 700px;
+            margin: 0 auto 3.5rem;
         }
 
         .cta-group {
             display: flex;
-            gap: 1rem;
+            gap: 1.25rem;
             justify-content: center;
         }
 
         .btn {
-            padding: 1rem 2rem;
-            border-radius: 12px;
+            padding: 1rem 2.25rem;
+            border-radius: 14px;
             font-weight: 600;
             text-decoration: none;
             transition: all 0.3s;
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0.75rem;
+            font-size: 1rem;
         }
 
         .btn-primary {
             background: var(--gradient);
             color: #fff;
-            box-shadow: 0 10px 20px rgba(59, 130, 246, 0.3);
+            box-shadow: 0 10px 25px rgba(59, 130, 246, 0.3);
         }
 
         .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 15px 30px rgba(59, 130, 246, 0.4);
+            transform: translateY(-3px);
+            box-shadow: 0 15px 35px rgba(59, 130, 246, 0.4);
         }
 
         .btn-secondary {
@@ -178,35 +183,102 @@
 
         .btn-secondary:hover {
             background: rgba(255, 255, 255, 0.05);
+            transform: translateY(-3px);
         }
 
-        /* Features */
-        .features {
-            padding: 6rem 0;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        /* App Preview */
+        .preview-container {
+            margin-top: 5rem;
+            position: relative;
+            z-index: 10;
+        }
+
+        .preview-window {
+            background: #1e1e1e;
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            padding: 0.5rem;
+            box-shadow: 0 50px 100px -20px rgba(0, 0, 0, 0.7);
+            position: relative;
+        }
+
+        .preview-header {
+            height: 40px;
+            background: #2d2d2d;
+            border-radius: 10px 10px 0 0;
+            display: flex;
+            align-items: center;
+            padding: 0 1rem;
+            gap: 0.5rem;
+        }
+
+        .preview-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .preview-img {
+            width: 100%;
+            height: auto;
+            border-radius: 4px;
+            display: block;
+        }
+
+        /* Quick Tour Section */
+        .tour-section {
+            padding: 8rem 0;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 4rem;
+        }
+
+        .section-header h2 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .section-header p {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+
+        .features-grid {
             display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
             gap: 2rem;
         }
 
         .feature-card {
             background: var(--surface);
             border: 1px solid var(--border);
-            padding: 2.5rem;
-            border-radius: 24px;
-            transition: all 0.3s;
-            position: relative;
-            overflow: hidden;
+            padding: 3rem;
+            border-radius: 28px;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            text-align: left;
+            text-decoration: none;
+            color: inherit;
         }
 
         .feature-card:hover {
-            transform: translateY(-10px);
-            border-color: rgba(59, 130, 246, 0.5);
+            transform: translateY(-12px);
+            border-color: var(--primary);
+            background: rgba(59, 130, 246, 0.03);
         }
 
-        .feature-card i {
-            font-size: 2.5rem;
+        .feature-icon {
+            width: 64px;
+            height: 64px;
+            background: rgba(59, 130, 246, 0.1);
+            border-radius: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.75rem;
             margin-bottom: 1.5rem;
-            display: block;
+            color: var(--primary);
         }
 
         .feature-card h3 {
@@ -216,122 +288,155 @@
 
         .feature-card p {
             color: var(--text-secondary);
+            font-size: 1rem;
+            margin-bottom: 1.5rem;
         }
 
-        /* Glass Visual */
-        .preview {
-            margin-top: 4rem;
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid var(--border);
-            border-radius: 32px;
-            padding: 1rem;
-            backdrop-filter: blur(20px);
-            box-shadow: 0 40px 100px rgba(0, 0, 0, 0.5);
-            max-width: 1000px;
-            margin-left: auto;
-            margin-right: auto;
-            overflow: hidden;
-        }
-
-        .preview img {
-            width: 100%;
-            border-radius: 24px;
-            display: block;
+        .btn-text {
+            color: var(--primary);
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
         }
 
         /* Footer */
         footer {
-            padding: 4rem 0;
+            padding: 6rem 0 3rem;
             border-top: 1px solid var(--border);
             text-align: center;
+        }
+
+        .footer-logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            margin-bottom: 1.5rem;
+            display: inline-block;
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 3rem;
+            justify-content: center;
+            margin-bottom: 3rem;
+            list-style: none;
+        }
+
+        .footer-links a {
             color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+
+        .footer-links a:hover {
+            color: var(--primary);
+        }
+
+        .copyright {
+            color: #475569;
+            font-size: 0.875rem;
         }
 
         @media (max-width: 768px) {
-            .hero h1 { font-size: 3rem; }
-            .cta-group { flex-direction: column; }
+            .hero h1 {
+                font-size: 3rem;
+            }
+
+            .hero p {
+                font-size: 1.1rem;
+            }
+
+            .nav-links {
+                display: none;
+            }
         }
     </style>
 </head>
+
 <body>
-    <nav class="container">
-        <a href="#" class="logo">
-            <svg width="32" height="32" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="20" y="20" width="60" height="60" rx="15" fill="url(#paint0_linear)" />
-                <path d="M40 50L47 57L60 43" stroke="white" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
-                <defs>
-                    <linearGradient id="paint0_linear" x1="20" y2="20" x2="80" y2="80" gradientUnits="userSpaceOnUse">
-                        <stop stop-color="#3b82f6" />
-                        <stop offset="1" stop-color="#8b5cf6" />
-                    </linearGradient>
-                </defs>
-            </svg>
-            Corex<span>AI</span>
-        </a>
-        <ul class="nav-links">
-            <li><a href="#features">Özellikler</a></li>
-            <li><a href="https://github.com/heroof123/CorexAI">GitHub</a></li>
-            <li><a href="https://github.com/heroof123/CorexAI/releases">İndir</a></li>
-        </ul>
+    <nav>
+        <div class="container" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <a href="index.html" class="logo">Corex<span>AI</span></a>
+            <ul class="nav-links">
+                <li><a href="index.html" class="active">Anasayfa</a></li>
+                <li><a href="features.html">Ömürlük Özellikler</a></li>
+                <li><a href="tour.html">Ürün Turu</a></li>
+                <li><a href="https://github.com/heroof123/CorexAI">GitHub</a></li>
+            </ul>
+            <a href="https://github.com/heroof123/CorexAI/releases" class="btn btn-primary"
+                style="padding: 0.6rem 1.2rem; font-size: 0.85rem; border-radius: 10px;">İndir</a>
+        </div>
     </nav>
 
-    <main class="container">
-        <section class="hero">
-            <div class="badge">v0.2.0 Yayında!</div>
-            <h1>Yarının Yazılımını Bugün <span>Yerel AI</span> ile İnşa Edin.</h1>
-            <p>CorexAI, gizliliğinizi koruyan, tamamen yerel çalışan yapay zeka destekli, modern ve ultra hızlı yeni nesil kod editörüdür.</p>
-            <div class="cta-group">
-                <a href="https://github.com/heroof123/CorexAI/releases" class="btn btn-primary">
-                    <svg width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>
-                    Hemen İndir (v0.2.0)
-                </a>
-                <a href="https://github.com/heroof123/CorexAI" class="btn btn-secondary">GitHub'da Yıldızla</a>
+    <main>
+        <section class="hero container">
+            <div data-aos="fade-up" class="badge">Açık Kaynak & Yerel AI</div>
+            <h1 data-aos="fade-up">Geliştiriciler İçin <span>Gizlilik Odaklı</span> AI Gücü.</h1>
+            <p data-aos="fade-up" data-aos-delay="100">CorexAI, buluta ihtiyaç duymadan bilgisayarınızın donanımını
+                kullanarak size en hızlı ve güvenli kodlama deneyimini sunar.</p>
+            <div data-aos="fade-up" data-aos-delay="200" class="cta-group">
+                <a href="tour.html" class="btn btn-primary">Uygulamaya Göz At</a>
+                <a href="https://github.com/heroof123/CorexAI" class="btn btn-secondary">Kaynak Kodu İncele</a>
             </div>
 
-            <div class="preview">
-                <img src="https://github.com/user-attachments/assets/9a24992e-30b1-4015-998b-48978247eb38" alt="CorexAI Arayüzü">
+            <div class="preview-container" data-aos="zoom-in-up">
+                <div class="preview-window">
+                    <div class="preview-header">
+                        <div class="preview-dot" style="background: #ff5f56;"></div>
+                        <div class="preview-dot" style="background: #ffbd2e;"></div>
+                        <div class="preview-dot" style="background: #27c93f;"></div>
+                    </div>
+                    <img src="https://github.com/user-attachments/assets/9a24992e-30b1-4015-998b-48978247eb38"
+                        alt="CorexAI Arayüz" class="preview-img">
+                </div>
             </div>
         </section>
 
-        <section id="features" class="features">
-            <div class="feature-card">
-                <i>🔒</i>
-                <h3>%100 Gizlilik</h3>
-                <p>Tüm yapay zeka işlemleri bilgisayarınızda gerçekleşir. Kodunuz asla buluta gitmez.</p>
+        <section id="tour" class="tour-section container">
+            <div class="section-header">
+                <h2>Bileşenleri Keşfedin</h2>
+                <p>CorexAI'nın kalbinde yer alan profesyonel araçları yakından tanıyın.</p>
             </div>
-            <div class="feature-card">
-                <i>⚡</i>
-                <h3>Ultra Hızlı</h3>
-                <p>Rust ve Tauri ile geliştirilen CorexAI, native performans ve düşük bellek kullanımı sağlar.</p>
-            </div>
-            <div class="feature-card">
-                <i>🧠</i>
-                <h3>Gelişmiş GGUF Desteği</h3>
-                <p>LM Studio veya Ollama'ya gerek duymadan GGUF modellerini doğrudan GPU/CPU üzerinde çalıştırın.</p>
-            </div>
-            <div class="feature-card">
-                <i>🗺️</i>
-                <h3>Görsel Proje Grafiği</h3>
-                <p>Projenizin yapısını ve bağımlılıklarını SVG tabanlı dinamik grafiklerle keşfedin.</p>
-            </div>
-            <div class="feature-card">
-                <i>🎨</i>
-                <h3>Modern Arayüz</h3>
-                <p>GitHub tarzı yüksek kontrastlı açık tema ve kusursuz karanlık mod ile gözlerinizi yormayın.</p>
-            </div>
-            <div class="feature-card">
-                <i>🛠️</i>
-                <h3>Tam Entegrasyon</h3>
-                <p>Docker, Git, Terminal ve Veritabanı tarayıcısı ile ihtiyacınız olan her şey tek bir yerde.</p>
+
+            <div class="features-grid">
+                <a href="tour.html#chat" class="feature-card">
+                    <div class="feature-icon">💬</div>
+                    <h3>Akıllı Sohbet Paneli</h3>
+                    <p>Dosyalarınızın içeriğini anlayan, bağlam odaklı AI asistanı ile konuşun.</p>
+                    <span class="btn-text">Nasıl çalışır? →</span>
+                </a>
+
+                <a href="features.html#graph" class="feature-card">
+                    <div class="feature-icon">🗺️</div>
+                    <h3>Görsel Proje Grafiği</h3>
+                    <p>SVG tabanlı dinamik grafiklerle projenizdeki dosyaların ilişkisini görün.</p>
+                    <span class="btn-text">Örnekleri gör →</span>
+                </a>
+
+                <a href="tour.html#gguf" class="feature-card">
+                    <div class="feature-icon">🧠</div>
+                    <h3>Model Tarayıcı</h3>
+                    <p>HuggingFace üzerindeki binlerce GGUF modelini tek tıkla indirin ve çalıştırın.</p>
+                    <span class="btn-text">Modelleri incele →</span>
+                </a>
             </div>
         </section>
     </main>
 
-    <footer>
-        <div class="container">
-            <p>&copy; 2026 CorexAI. MIT Lisansı ile açık kaynak olarak sunulmaktadır.</p>
-            <p style="margin-top: 1rem;">CorexAI Ekibi tarafından ❤️ ile yapıldı.</p>
+    <footer class="container">
+        <div class="footer-logo">Corex<span>AI</span></div>
+        <ul class="footer-links">
+            <li><a href="index.html">Anasayfa</a></li>
+            <li><a href="features.html">Özellikler</a></li>
+            <li><a href="tour.html">Tur</a></li>
+            <li><a href="https://github.com/heroof123/CorexAI/issues">Destek</a></li>
+        </ul>
+        <div class="copyright">
+            &copy; 2026 CorexAI. Tüm hakları gizlidir. <br>
+            Tauri, Rust ve React ile ❤️ kullanılarak geliştirildi.
         </div>
     </footer>
 </body>
+
 </html>

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Özellikler | CorexAI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Inter:wght@400;500;700&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --bg: #0b0f1a;
+            --surface: #161e2d;
+            --text: #f8fafc;
+            --text-secondary: #94a3b8;
+            --border: rgba(255, 255, 255, 0.08);
+            --gradient: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        nav {
+            padding: 1.25rem 0;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            text-decoration: none;
+            color: #fff;
+        }
+
+        .logo span {
+            background: var(--gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            list-style: none;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: var(--text-secondary);
+            transition: 0.3s;
+        }
+
+        .nav-links a:hover {
+            color: var(--primary);
+        }
+
+        .header {
+            padding: 6rem 0 4rem;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 3.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .header p {
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+        }
+
+        .feature-block {
+            padding: 6rem 0;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .feature-block:nth-child(even) {
+            direction: rtl;
+        }
+
+        .feature-block:nth-child(even) .content {
+            direction: ltr;
+            text-align: left;
+        }
+
+        .content h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .content p {
+            color: var(--text-secondary);
+            margin-bottom: 1.5rem;
+            font-size: 1.1rem;
+        }
+
+        .image-box {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
+        }
+
+        .image-box img {
+            width: 100%;
+            display: block;
+        }
+
+        footer {
+            padding: 4rem 0;
+            text-align: center;
+            color: var(--text-secondary);
+        }
+
+        @media (max-width: 850px) {
+            .feature-block {
+                grid-template-columns: 1fr;
+                text-align: center;
+            }
+
+            .feature-block:nth-child(even) {
+                direction: ltr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <nav>
+            <a href="index.html" class="logo">Corex<span>AI</span></a>
+            <ul class="nav-links">
+                <li><a href="index.html">Anasayfa</a></li>
+                <li><a href="features.html" style="color: var(--primary);">Özellikler</a></li>
+                <li><a href="tour.html">Tur</a></li>
+            </ul>
+        </nav>
+
+        <header class="header">
+            <h1>Sınırları Zorlayan Özellikler</h1>
+            <p>CorexAI sadece bir kod editörü değil, akıllı bir iş ortağıdır.</p>
+        </header>
+
+        <section class="feature-block">
+            <div class="content">
+                <h2>Bilişsel Bağlam Analizi</h2>
+                <p>SmartContextBuilder teknolojimiz, projenizin tüm bağımlılıklarını tarar ve AI'ya sadece kodunuzu
+                    değil, projenizin ruhunu da öğretir.</p>
+                <p>Diğer editörlerin aksine, CorexAI bir dosyada hata yaparsanız bunun diğer dosyaları nasıl
+                    etkileyeceğini bilir.</p>
+            </div>
+            <div class="image-box">
+                <img src="https://github.com/user-attachments/assets/c55e346d-c281-48ca-b5d2-39e62ec3d853"
+                    alt="Özellikler">
+            </div>
+        </section>
+
+        <section id="graph" class="feature-block">
+            <div class="content">
+                <h2>Görsel Proje Dinamiği</h2>
+                <p>Projeniz karmaşıklaştıkça kaybolmayın. Visual Project Graph özelliği ile tüm dosyalarınızı dinamik
+                    bir harita üzerinde görün.</p>
+                <p>Hangi dosyanın hangisine bağımlı olduğunu, projenizin neresinin "sıcak" (çok değişen) olduğunu tek
+                    bakışta anlayın.</p>
+            </div>
+            <div class="image-box">
+                <img src="https://github.com/user-attachments/assets/60609853-1da5-4dc3-ac16-2dbc6cbc89ec"
+                    alt="Proje Grafiği">
+            </div>
+        </section>
+
+        <section class="feature-block">
+            <div class="content">
+                <h2>GGUF Model Özgürlüğü</h2>
+                <p>LM Studio veya Ollama gibi aracı programlara veda edin. CorexAI, GGUF modellerini doğrudan kendi
+                    içinde yükler ve GPU gücünüzü kullanarak çalıştırır.</p>
+                <p>HuggingFace entegrasyonu sayesinde en yeni Llama, Qwen veya Mistral modellerini anında deneyin.</p>
+            </div>
+            <div class="image-box">
+                <img src="https://github.com/user-attachments/assets/200c79ca-8e21-4fc9-a6af-ad9971b8ef0b"
+                    alt="Model Ayarları">
+            </div>
+        </section>
+
+        <footer>
+            <p>&copy; 2026 CorexAI. Yerel AI Devrimi.</p>
+        </footer>
+    </div>
+</body>
+
+</html>
