@@ -1147,10 +1147,17 @@ function ChatPanel({
     messagesEndRef.current.scrollIntoView({ behavior, block: "end" });
   };
 
+  // 🆕 Throttled scroll for streaming (FIX-24)
+  const throttledScrollRef = useRef<number>(0);
+
   useEffect(() => {
-    // If streaming, scroll more frequently (instantly)
+    // If streaming, scroll with throttle (instantly) to prevent UI jank
     if (isStreaming) {
-      scrollToBottom();
+      const now = Date.now();
+      if (now - throttledScrollRef.current > 100) {
+        scrollToBottom();
+        throttledScrollRef.current = now;
+      }
     } else {
       // Normal message arrival, smooth scroll
       const timeout = setTimeout(() => scrollToBottom(), 100);

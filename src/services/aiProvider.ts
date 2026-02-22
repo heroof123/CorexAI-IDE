@@ -27,19 +27,17 @@ export interface AIModel {
   isActive: boolean;
 }
 
+import { storage } from "./storage";
+
 // AI Provider'ları yükle
-export function loadAIProviders(): AIProvider[] {
-  const saved = localStorage.getItem('corex-ai-providers');
+export async function loadAIProviders(): Promise<AIProvider[]> {
+  const saved = await storage.getSettings<AIProvider[]>('corex-ai-providers');
   if (saved) {
-    try {
-      return JSON.parse(saved);
-    } catch (error) {
-      console.error('AI providers yüklenemedi:', error);
-    }
+    return saved;
   }
 
   // Default providers
-  return [
+  const defaultProviders: AIProvider[] = [
     {
       id: "lm-studio",
       name: "LM Studio",
@@ -76,16 +74,19 @@ export function loadAIProviders(): AIProvider[] {
       description: "Yerel LM Studio sunucusu"
     }
   ];
+
+  await storage.setSettings('corex-ai-providers', defaultProviders);
+  return defaultProviders;
 }
 
 // AI Provider'ları kaydet
-export function saveAIProviders(providers: AIProvider[]): void {
-  localStorage.setItem('corex-ai-providers', JSON.stringify(providers));
+export async function saveAIProviders(providers: AIProvider[]): Promise<void> {
+  await storage.setSettings('corex-ai-providers', providers);
 }
 
 // Aktif modeli bul
-export function findActiveModel(modelId: string): { provider: AIProvider; model: AIModel } | null {
-  const providers = loadAIProviders();
+export async function findActiveModel(modelId: string): Promise<{ provider: AIProvider; model: AIModel } | null> {
+  const providers = await loadAIProviders();
 
   // 1. Önce ID ile tam eşleşen ve aktif olan modeli ara
   for (const provider of providers) {
@@ -174,6 +175,48 @@ function sanitizeGgufResponse(text: string): string {
   return cleaned.trim();
 }
 
+/**
+ * 🔍 Metin içinden JSON bloğunu ayıkla ve parse et (FIX-34)
+ */
+export function extractJsonFromText<T>(text: string): T | null {
+  if (!text) return null;
+
+  try {
+    // 1. Direkt parse etmeyi dene
+    return JSON.parse(text);
+  } catch {
+    try {
+      // 2. Markdown kod bloklarını ara (```json ... ```)
+      const jsonBlockRegex = /```(?:json)?\s*([\s\S]*?)```/;
+      const match = text.match(jsonBlockRegex);
+      if (match && match[1]) {
+        return JSON.parse(match[1].trim());
+      }
+
+      // 3. İlk { ve son } arasını dene
+      const firstBrace = text.indexOf('{');
+      const lastBrace = text.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        const potentialJson = text.substring(firstBrace, lastBrace + 1);
+        // Temizlik: Kontrol karakterlerini ve geçersiz kaçışları temizle
+        const cleanedJson = potentialJson
+          .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
+          .trim();
+        return JSON.parse(cleanedJson);
+      }
+    } catch (e) {
+      console.warn("⚠️ JSON extraction failed:", e);
+    }
+  }
+  return null;
+}
+
+const getAgenticInstruction = (isTurkish: boolean): string => {
+  return isTurkish
+    ? 'Sen CorexAI asistanısın. Eğer sana sadece selam veriliyorsa veya kodla ilgisiz bir sohbet ediliyorsa, doğal bir dille sadece sohbet et, asla kod bloğu üretme! ANCAK eğer bir kod yazman veya değiştirmen isteniyorsa:\n1. **DÜŞÜNME AŞAMASI (THINKING STAGE):** Kod yazmadan önce sana sunulan "Project Map", "Project Rules" ve "User Focus" (Cursor/Selection) verilerini analiz et. Stratejini 1-2 cümleyle açıkla.\n2. **KOD İNCELEME MODU (REVIEW MODE):** Eğer kullanıcı bir "Ghost Review" veya refactor önerisiyle gelmişse, koda bir kıdemli yazılımcı (senior dev) gözüyle bak. Sadece hatayı değil, temiz kod (clean code) prensiplerini ve performansı da gözet.\n3. **HATA DÜZELTME MODU (FIXING MODE):** Eğer kullanıcı bir terminal hatası (Terminal context) paylaşmışsa, önceliğin bu hatayı çözmek olsun. Hatayı analiz et ve doğrudan çözüme odaklanan <<<SEARCH === >>>REPLACE güncellemeleri yap.\n4. **PROJE KURALLARI:** Eğer bir ".corexrules" veya "COREX.md" dosyası sunulmuşsa, oradaki teknik kurallara KESİNLİKLE uy.\n5. **TAM FONKSİYONEL KOD:** Ürettiğin kodlar her zaman İNTERAKTİF olmalı.\n6. **UI/UX:** Modern ve premium UI/UX prensiplerini uygula.\n7. **DOSYA GÜNCELLEME:** Sadece değiştirmek istediğin yeri <<<SEARCH === >>>REPLACE formatında ver. Sadece zorunluysa tüm dosyayı yaz.\n8. **YENİ DOSYA OLUŞTURMA (DİKKAT!):** Kod bloğunun başına MUTLAKA dosya adını yazmalısın. Örnek format: ```html:index.html VEYA ```javascript:app.js. DOSYA ADI YAZMAK ZORUNLUDUR!'
+    : 'You are CorexAI assistant. If the user is just chatting or saying hello, respond normally in natural language. BUT if you are generating or modifying code:\n1. **THINKING STAGE:** Before writing any code, analyze the "Project Map", "Project Rules", and "User Focus" (Cursor/Selection) provided. Explain your strategy in 1-2 sentences.\n2. **REVIEW MODE:** If a "Ghost Review" or refactor suggestion is provided, analyze the code as a senior developer. Focus on clean code principles, performance, and maintainability.\n3. **FIXING MODE:** If terminal error context is provided, prioritize fixing this specific error. Analyze the error and provide direct <<<SEARCH === >>>REPLACE updates to resolve it.\n4. **PROJECT RULES:** If a ".corexrules" or "COREX.md" file is provided, STRICTLY follow the technical rules and naming standards defined there.\n5. **FULLY FUNCTIONAL CODE:** Generated code must be INTERACTIVE.\n6. **UI/UX:** Apply modern and premium UI/UX principles.\n7. **FILE UPDATE:** Provide ONLY the exact part to change using <<<SEARCH === >>>REPLACE format. Only rewrite the full file if absolutely necessary.\n8. **NEW FILE (WARNING!):** Always provide the filename in the code block like ```html:index.html or ```javascript:app.js. FILENAME IS MANDATORY!';
+};
+
 // 🆕 Conversation history desteği eklendi
 export async function callAI(
   message: string,
@@ -182,14 +225,21 @@ export async function callAI(
   onStreamToken?: (text: string) => void // 🆕 Streaming callback
 ): Promise<string> {
   const isTurkish = navigator.language ? navigator.language.startsWith('tr') : true;
-  const agenticInstruction = isTurkish
-    ? '\n\n[SİSTEM ÖNEMLİ KURALI: Eğer sana sadece selam veriliyorsa veya kodla ilgisiz bir sohbet ediliyorsa, doğal bir dille sadece sohbet et, asla kod bloğu üretme! ANCAK eğer bir kod yazman veya değiştirmen isteniyorsa:\n1. **DÜŞÜNME AŞAMASI (THINKING STAGE):** Kod yazmadan önce sana sunulan "Project Map", "Project Rules" ve "User Focus" (Cursor/Selection) verilerini analiz et. Stratejini 1-2 cümleyle açıkla.\n2. **KOD İNCELEME MODU (REVIEW MODE):** Eğer kullanıcı bir "Ghost Review" veya refactor önerisiyle gelmişse, koda bir kıdemli yazılımcı (senior dev) gözüyle bak. Sadece hatayı değil, temiz kod (clean code) prensiplerini ve performansı da gözet.\n3. **HATA DÜZELTME MODU (FIXING MODE):** Eğer kullanıcı bir terminal hatası (Terminal context) paylaşmışsa, önceliğin bu hatayı çözmek olsun. Hatayı analiz et ve doğrudan çözüme odaklanan <<<SEARCH === >>>REPLACE güncellemeleri yap.\n4. **PROJE KURALLARI:** Eğer bir ".corexrules" veya "COREX.md" dosyası sunulmuşsa, oradaki teknik kurallara KESİNLİKLE uy.\n5. **TAM FONKSİYONEL KOD:** Ürettiğin kodlar her zaman İNTERAKTİF olmalı.\n6. **UI/UX:** Modern ve premium UI/UX prensiplerini uygula.\n7. **DOSYA GÜNCELLEME:** Sadece değiştirmek istediğin yeri <<<SEARCH === >>>REPLACE formatında ver. Sadece zorunluysa tüm dosyayı yaz.\n8. **YENİ DOSYA OLUŞTURMA (DİKKAT!):** Kod bloğunun başına MUTLAKA dosya adını yazmalısın. Örnek format: ```html:index.html VEYA ```javascript:app.js. DOSYA ADI YAZMAK ZORUNLUDUR!]'
-    : '\n\n[SYSTEM CRITICAL RULE: If the user is just chatting or saying hello, respond normally in natural language. BUT if you are generating or modifying code:\n1. **THINKING STAGE:** Before writing any code, analyze the "Project Map", "Project Rules", and "User Focus" (Cursor/Selection) provided. Explain your strategy in 1-2 sentences.\n2. **REVIEW MODE:** If a "Ghost Review" or refactor suggestion is provided, analyze the code as a senior developer. Focus on clean code principles, performance, and maintainability.\n3. **FIXING MODE:** If terminal error context is provided, prioritize fixing this specific error. Analyze the error and provide direct <<<SEARCH === >>>REPLACE updates to resolve it.\n4. **PROJECT RULES:** If a ".corexrules" or "COREX.md" file is provided, STRICTLY follow the technical rules and naming standards defined there.\n5. **FULLY FUNCTIONAL CODE:** Generated code must be INTERACTIVE.\n6. **UI/UX:** Apply modern and premium UI/UX principles.\n7. **FILE UPDATE:** Provide ONLY the exact part to change using <<<SEARCH === >>>REPLACE format. Only rewrite the full file if absolutely necessary.\n8. **NEW FILE (WARNING!):** Always provide the filename in the code block like ```html:index.html or ```javascript:app.js. FILENAME IS MANDATORY!]';
 
-  const enhancedMessage = message + agenticInstruction;
+  // Resimleri parse et (temiz mesajı al)
+  const { cleanMessage, images } = parseImagesFromMessage(message);
 
-  // 🆕 Mesajdan resimleri parse et
-  const { cleanMessage, images } = parseImagesFromMessage(enhancedMessage);
+  // History hazırla
+  const messages = [...(conversationHistory || [])];
+
+  // Eğer history boşsa veya başında system prompt yoksa, agentic instruction ekle
+  const hasSystemPrompt = messages.some(m => m.role === 'system');
+  if (!hasSystemPrompt) {
+    messages.unshift({
+      role: 'system',
+      content: getAgenticInstruction(isTurkish)
+    });
+  }
 
 
   if (images.length > 0) {
@@ -200,7 +250,7 @@ export async function callAI(
   let actualModelId = modelId;
   if (!modelId || modelId === 'default') {
     console.log('⚠️ Model ID belirtilmemiş, aktif model aranıyor...');
-    const providers = loadAIProviders();
+    const providers = await loadAIProviders();
 
     // İlk aktif provider'ın ilk aktif modelini bul
     for (const provider of providers) {
@@ -220,7 +270,7 @@ export async function callAI(
     }
   }
 
-  const result = findActiveModel(actualModelId);
+  const result = await findActiveModel(actualModelId);
 
   if (!result) {
     throw new Error(`Model bulunamadı: ${actualModelId}`);
@@ -243,24 +293,20 @@ export async function callAI(
     console.log('📦 GGUF provider tespit edildi, direkt GGUF çağrısı yapılıyor...');
 
     // GGUF fonksiyonlarını import et
-    const { chatWithGgufModel, getGgufModelStatus } = await import('./ggufProvider');
+    const { getGgufModelStatus } = await import('./ggufProvider');
 
     // 🆕 GGUF model bilgisini gguf-models listesinden bul
-    const savedGgufModels = localStorage.getItem('gguf-models');
+    const ggufModels = await storage.getSettings<any[]>('gguf-models');
     let modelConfig = null;
 
-    if (savedGgufModels) {
-      const ggufModels = JSON.parse(savedGgufModels);
+    if (ggufModels) {
       // actualModelId ile eşleşen modeli bul
       modelConfig = ggufModels.find((m: any) => m.id === actualModelId);
     }
 
     // Eğer listede yoksa (yeni eklenmiş olabilir) gguf-active-model'e fallback yap (geriye dönük uyumluluk)
     if (!modelConfig) {
-      const ggufConfig = localStorage.getItem('gguf-active-model');
-      if (ggufConfig) {
-        modelConfig = JSON.parse(ggufConfig);
-      }
+      modelConfig = await storage.getSettings<any>('gguf-active-model');
     }
 
     // Eğer config bulunamadıysa, backend'de zaten yüklü olan modeli kullan
@@ -462,46 +508,48 @@ export async function callAI(
     console.log('🔵 GGUF chat başlatılıyor, prompt uzunluğu:', fullPrompt.length);
     console.log('📝 Prompt preview:', fullPrompt.substring(0, 300));
 
+    // 🆕 GGUF calls with timeout (FIX-25)
+    const ggufTimeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('GGUF yanıt vermiyor (300 saniye)')), 300000);
+    });
+
     // Chat yap - maxTokens generation için (üretilecek token sayısı)
     // Context length zaten model yüklenirken ayarlandı
     // 🔥 FIXED: Minimum 2048 token garanti et, kod yazarken yeterli olsun
     const generationMaxTokens = Math.max(Math.min(contextLength / 2, 8192), 2048); // Min 2048, max 8192
     console.log('🎯 Generation max tokens:', generationMaxTokens, '(context:', contextLength, ')');
-    console.log('🔍 Calculation:', {
-      contextLength,
-      contextHalf: contextLength / 2,
-      minWithMax: Math.min(contextLength / 2, 8192),
-      finalWithMin: Math.max(Math.min(contextLength / 2, 8192), 2048)
-    });
 
     // 🆕 Streaming desteği
     if (onStreamToken) {
       const { chatWithChunkedStreaming } = await import('./streamingProvider');
-      const response = await chatWithChunkedStreaming(
+      const streamPromise = chatWithChunkedStreaming(
         modelPath,
         fullPrompt,
         generationMaxTokens,
         model.temperature || 0.7,
         {
           onToken: (delta) => {
-            // 🔥 FIX: Delta token'a sanitize uygulanmaz (sadece son yanıta uygulanmalı)
-            // Delta küçük bir parça olduğu için kesme işlemi yanlış truncation yapar
             onStreamToken(delta);
           },
           onComplete: (text: string) => console.log('✅ Streaming tamamlandı:', text.length, 'karakter')
         }
       );
+      const response = await Promise.race([streamPromise, ggufTimeoutPromise]);
       return sanitizeGgufResponse(response);
     }
 
     // Normal (non-streaming) mode
-    const response = await chatWithGgufModel(
-      modelPath, // 🆕 modelPath eklendi
-      fullPrompt,
-      generationMaxTokens, // Üretilecek token sayısı
-      model.temperature || 0.7
-    );
+    const chatPromise = (async () => {
+      const { chatWithGgufModel } = await import('./ggufProvider');
+      return await chatWithGgufModel(
+        modelPath,
+        fullPrompt,
+        generationMaxTokens,
+        model.temperature || 0.7
+      );
+    })();
 
+    const response = await Promise.race([chatPromise, ggufTimeoutPromise]);
     const sanitized = sanitizeGgufResponse(response);
     console.log('✅ GGUF response alındı ve sanitize edildi, uzunluk:', sanitized.length);
     return sanitized;
@@ -521,7 +569,7 @@ export async function callAI(
 
   const aiPromise = invoke<string>("chat_with_dynamic_ai", {
     message: cleanMessage,
-    conversationHistory: conversationHistory || [],
+    conversationHistory: messages, // 🔥 Güncellenmiş history kullan
     providerConfig: {
       base_url: provider.baseUrl,
       host: provider.host || null,
@@ -556,7 +604,7 @@ export async function testProviderConnection(provider: AIProvider): Promise<bool
       }
 
       // Model yüklü değilse ama config varsa uyarı ver
-      const hasConfig = localStorage.getItem('gguf-active-model') !== null;
+      const hasConfig = (await storage.getSettings('gguf-active-model')) !== null;
       if (hasConfig) {
         console.log('⚠️ GGUF Test Sonucu: Config var ama model yüklü değil');
         return false;
@@ -601,10 +649,9 @@ export async function fetchAvailableModels(provider: AIProvider): Promise<string
     if (provider.baseUrl === "internal://gguf") {
       console.log('📦 GGUF provider için model listesi alınıyor...');
 
-      // localStorage'dan aktif GGUF modelini al
-      const ggufConfig = localStorage.getItem('gguf-active-model');
-      if (ggufConfig) {
-        const config = JSON.parse(ggufConfig);
+      // storage'dan aktif GGUF modelini al
+      const config = await storage.getSettings<any>('gguf-active-model');
+      if (config) {
         console.log('✅ GGUF Model bulundu:', config.modelName);
         return [config.modelName || 'GGUF Model'];
       }

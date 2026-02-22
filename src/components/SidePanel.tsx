@@ -12,6 +12,10 @@ import { MCPPanel } from "./MCPPanel";
 import { useLanguage } from "../contexts/LanguageContext";
 import { FileIndex } from '../types/index';
 import TechDebtTracker from "./TechDebtTracker";
+import SecurityFortress from "./SecurityFortress";
+import ModelRoulette from "./ModelRoulette";
+import PluginMarketplace from "./PluginMarketplace";
+import InteractiveAcademy from "./InteractiveAcademy";
 
 interface SidePanelProps {
   activeView: string;
@@ -432,6 +436,14 @@ export default function SidePanel({
         return <MCPPanel />;
       case "tech-debt":
         return <TechDebtTracker fileIndex={fileIndex} onFileClick={onFileSelect} />;
+      case "security-fortress":
+        return <SecurityFortress fileIndex={fileIndex} onFileClick={onFileSelect} />;
+      case "model-roulette":
+        return <ModelRoulette />;
+      case "marketplace":
+        return <PluginMarketplace />;
+      case "academy":
+        return <InteractiveAcademy />;
       case "compare":
         return (
           <div className="p-4 text-xs text-neutral-400">

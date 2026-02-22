@@ -1,0 +1,80 @@
+    Checking corex v0.1.0 (E:\ai-desktop\local-ai\src-tauri)
+error[E0432]: unresolved import `sysinfo::SystemExt`
+   --> src\gguf.rs:639:27
+    |
+639 |     use sysinfo::{System, SystemExt};
+    |                           ^^^^^^^^^
+    |                           |
+    |                           no `SystemExt` in the root
+    |                           help: a similar name exists in the module: `System`
+
+warning: unused imports: `SeekFrom` and `Seek`
+   --> src\gguf.rs:652:25
+    |
+652 |     use std::io::{Read, Seek, SeekFrom};
+    |                         ^^^^  ^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+error[E0061]: this method takes 4 arguments but 2 arguments were supplied
+    --> src\commands.rs:1225:93
+     |
+1225 |     let result: Result<(String, Vec<ContextSource>), Box<dyn std::error::Error>> = pipeline.build_context(intent.clone(), &query).await;
+     |                                                                                             ^^^^^^^^^^^^^------------------------ two arguments of type `&VectorDB` and `Vec<f32>` are missing
+     |
+note: method defined here
+    --> src\rag_pipeline.rs:105:18
+     |
+ 105 |     pub async fn build_context(
+     |                  ^^^^^^^^^^^^^
+...
+ 109 |         vector_db: &crate::vector_db::VectorDB,
+     |         --------------------------------------
+ 110 |         query_embedding: Vec<f32>,
+     |         -------------------------
+help: provide the arguments
+     |
+1225 |     let result: Result<(String, Vec<ContextSource>), Box<dyn std::error::Error>> = pipeline.build_context(intent.clone(), &query, /* &VectorDB */, /* Vec<f32> */).await;
+     |                                                                                                                                 +++++++++++++++++++++++++++++++++
+
+error[E0382]: borrow of moved value: `response`
+   --> src\streaming.rs:160:51
+    |
+150 |     let response = client
+    |         -------- move occurs because `response` has type `reqwest::Response`, which does not implement the `Copy` trait
+...
+159 |         let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+    |                                   ------ `response` moved due to this method call
+160 |         return Err(format!("HTTP error ({}): {}", response.status(), error_text));
+    |                                                   ^^^^^^^^ value borrowed here after move
+    |
+note: `reqwest::Response::text` takes ownership of the receiver `self`, which moves `response`
+   --> C:\Users\pc\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\reqwest-0.11.27\src\async_impl\response.rs:147:23
+    |
+147 |     pub async fn text(self) -> crate::Result<String> {
+    |                       ^^^^
+
+warning: unused variable: `loaded_model`
+   --> src\gguf.rs:783:10
+    |
+783 |     let (loaded_model, backend) = {
+    |          ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_loaded_model`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `backend`
+   --> src\gguf.rs:783:24
+    |
+783 |     let (loaded_model, backend) = {
+    |                        ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_backend`
+
+warning: unused variable: `i`
+  --> src\streaming.rs:79:9
+   |
+79 |     for i in 0..max_tokens {
+   |         ^ help: if this is intentional, prefix it with an underscore: `_i`
+
+Some errors have detailed explanations: E0061, E0382, E0432.
+For more information about an error, try `rustc --explain E0061`.
+warning: `corex` (lib) generated 4 warnings
+error: could not compile `corex` (lib) due to 3 previous errors; 4 warnings emitted

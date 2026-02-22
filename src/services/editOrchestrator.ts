@@ -197,46 +197,64 @@ Generate the edits now:`;
   }
 
   /**
-   * Parse code actions from AI response
+   * Parse code actions from AI response (FIX-21)
    */
   private parseCodeActions(response: string, plan: Plan): CodeAction[] {
     const actions: CodeAction[] = [];
 
-    // Try to parse structured format
-    const actionPattern = /ACTION:\s*(create|modify|delete)\s*\nFILE:\s*(.+?)\s*\nCONTENT:\s*```[\w]*\n([\s\S]*?)```/gi;
+    // 1. Flexible regex - allows more variations (FIX-21)
+    const actionPattern = /ACTION\s*:\s*(create|modify|delete)\s*[\r\n]+FILE\s*:\s*(.+?)\s*[\r\n]+CONTENT\s*:?\s*[\r\n]*```(?:\w+)?[\r\n]+([\s\S]*?)```/gi;
 
     let match;
     while ((match = actionPattern.exec(response)) !== null) {
-      const [, type, filePath, content] = match;
-
       actions.push({
         id: `action-${Date.now()}-${actions.length}`,
-        type: type as "create" | "modify" | "delete",
-        filePath: filePath.trim(),
-        content: content.trim(),
+        type: match[1].toLowerCase() as "create" | "modify" | "delete",
+        filePath: match[2].trim(),
+        content: match[3].trim(),
         oldContent: "",
-        description: `${type} ${filePath}`,
+        description: `${match[1]} ${match[2]}`,
       });
     }
 
-    // Fallback: if no structured format, try to extract code blocks
-    if (actions.length === 0 && plan.targetFiles.length > 0) {
-      const codeBlockPattern = /```[\w]*\n([\s\S]*?)```/g;
-      const codeBlocks: string[] = [];
+    // 2. JSON Fallback (FIX-21)
+    if (actions.length === 0) {
+      const jsonMatch = response.match(/\[\s*\{[\s\S]*?\}\s*\]/);
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          for (const item of parsed) {
+            if (item.type && item.filePath) {
+              actions.push({
+                id: `action-json-${Date.now()}-${actions.length}`,
+                type: item.type,
+                filePath: item.filePath,
+                content: item.content || "",
+                oldContent: "",
+                description: `${item.type} ${item.filePath}`,
+              });
+            }
+          }
+        } catch { /* parse error */ }
+      }
+    }
 
+    // 3. Fallback: match code blocks with target files (FIX-21)
+    if (actions.length === 0 && plan.targetFiles.length > 0) {
+      const codeBlockPattern = /```(?:\w+)?\n([\s\S]*?)```/g;
+      const codeBlocks: string[] = [];
       while ((match = codeBlockPattern.exec(response)) !== null) {
         codeBlocks.push(match[1].trim());
       }
 
-      // Create actions for each target file
       for (let i = 0; i < Math.min(plan.targetFiles.length, codeBlocks.length); i++) {
         actions.push({
-          id: `action-${Date.now()}-${i}`,
+          id: `action-fb-${Date.now()}-${i}`,
           type: plan.intent === "create_file" ? "create" : "modify",
           filePath: plan.targetFiles[i],
           content: codeBlocks[i],
           oldContent: "",
-          description: `${plan.intent} ${plan.targetFiles[i]}`,
+          description: `Fallback ${plan.intent} ${plan.targetFiles[i]}`,
         });
       }
     }

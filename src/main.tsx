@@ -60,6 +60,11 @@ try {
   throw error;
 }
 
+import { migrateFromLocalStorage } from "./services/storage";
+
+// Start migration early
+migrateFromLocalStorage().catch(err => console.error("Migration error:", err));
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ErrorBoundary>

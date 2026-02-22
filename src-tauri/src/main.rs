@@ -93,6 +93,7 @@ pub fn run() {
         .manage(mcp_state)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_store::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             scan_project,
             read_file,
@@ -125,6 +126,7 @@ pub fn run() {
             commands::git_log_project,
             commands::git_blame,
             commands::execute_command,
+            commands::test_provider_connection, // FIX-41 backend test
             load_gguf_model,
             chat_with_gguf_model,
             chat_with_gguf_vision,

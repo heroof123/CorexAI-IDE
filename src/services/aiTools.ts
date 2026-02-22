@@ -253,7 +253,8 @@ export async function executeTool(toolName: string, parameters: any): Promise<an
   try {
     switch (toolName) {
       case 'run_terminal':
-        return await runTerminal(parameters.command);
+      case 'run_command': // FIX-37 Alias
+        return await runTerminal(parameters.command || parameters.cmd);
 
       case 'read_file':
         return await readFile(parameters.path);
@@ -342,8 +343,26 @@ export async function executeTool(toolName: string, parameters: any): Promise<an
 }
 
 // Tool implementations
+const SAFE_COMMANDS = ['ls', 'dir', 'pwd', 'cat', 'echo', 'npm', 'cargo',
+  'python', 'git', 'node', 'tsc', 'grep', 'find', 'mkdir', 'cp', 'mv', 'rm', 'npx']; // FIX-18
+
 async function runTerminal(command: string): Promise<any> {
   try {
+    // Basic verification
+    const firstWord = command.trim().split(/\s+/)[0];
+    const baseCmd = firstWord.split(/[/\\]/).pop() || firstWord;
+
+    if (!SAFE_COMMANDS.includes(baseCmd)) {
+      throw new Error(`Güvenlik: '${baseCmd}' komutu izin listesinde değil. Lütfen sadece izinli komutları kullanın.`);
+    }
+
+    const dangerous = [';', '&&', '||', '|', '`', '$(', '>', '<'];
+    for (const d of dangerous) {
+      if (command.includes(d)) {
+        throw new Error(`Güvenlik: '${d}' karakteri kullanımı yasaktır.`);
+      }
+    }
+
     // Windows için cmd kullan
     const isWindows = navigator.platform.toLowerCase().includes('win');
     const shell = isWindows ? 'cmd' : 'sh';
@@ -354,6 +373,11 @@ async function runTerminal(command: string): Promise<any> {
       args: shellArgs,
       cwd: null
     });
+
+    // Notify terminal UI (FIX-37)
+    window.dispatchEvent(new CustomEvent('corex-terminal-output', {
+      detail: { command, output: result }
+    }));
 
     // Result zaten JSON formatında
     const output = result as any;

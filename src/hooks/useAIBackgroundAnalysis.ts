@@ -49,19 +49,41 @@ export function useAIBackgroundAnalysis(
     });
     const [isPanelOpen, setIsPanelOpen] = useState(false);
 
-    // Cache: hangi dosyaları analiz ettik (path → timestamp)
     const analysisCache = useRef<Map<string, { timestamp: number; contentHash: string }>>(new Map());
     const isAnalyzingRef = useRef(false);
-    const abortRef = useRef<AbortController | null>(null);
 
     /** Basit hash — içerik değişti mi kontrolü için */
     const hashContent = (s: string) => {
         let h = 0;
         for (let i = 0; i < Math.min(s.length, 2000); i++) {
-            h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+            h = ((h << 5) - h) + s.charCodeAt(i);
+            h |= 0;
         }
-        return String(h);
+        return h.toString();
     };
+
+    /** Dosya analiz edilmeli mi? (FIX-29) */
+    const shouldAnalyze = useCallback((filePath: string, content: string) => {
+        if (!isAnalyzable(filePath)) return false;
+
+        const cached = analysisCache.current.get(filePath);
+        const currentHash = hashContent(content);
+
+        if (!cached) return true;
+
+        // 1. İçerik değiştiyse her zaman analiz et
+        if (cached.contentHash !== currentHash) return true;
+
+        // 2. TTL kontrolü (1 saat = 3600000ms)
+        const CACHE_TTL = 3600_000;
+        const now = Date.now();
+        if (now - cached.timestamp > CACHE_TTL) {
+            console.log(`[AI Background] Cache TTL doldu (${filePath}), yeniden analiz edilecek`);
+            return true;
+        }
+
+        return false;
+    }, []);
 
     /** Bir dosyayı gerçek AI ile analiz et */
     const analyzeFile = useCallback(async (filePath: string, content: string): Promise<FileAnalysisResult | null> => {
@@ -96,75 +118,84 @@ export function useAIBackgroundAnalysis(
         }
     }, []);
 
-    /** Dosya değiştiğinde veya açıldığında otomatik analiz tetikle */
-    useEffect(() => {
-        if (!selectedFile || !fileContent || !isAIReady) return;
-        if (!isAnalyzable(selectedFile)) return;
+    /** Kuyruk işleme mantığı - Geliştirilmiş ve Hata Giderilmiş */
+    const processQueue = useCallback(async () => {
+        if (state.analysisQueue.length === 0 || isAnalyzingRef.current || !isAIReady) return;
 
-        const contentHash = hashContent(fileContent);
-        const cached = analysisCache.current.get(selectedFile);
+        const nextFile = state.analysisQueue[0];
+        isAnalyzingRef.current = true;
+        setState(prev => ({
+            ...prev,
+            currentlyAnalyzing: nextFile,
+            analysisQueue: prev.analysisQueue.slice(1)
+        }));
 
-        // Aynı içerik zaten analiz edildi mi? (son 10 dakikada)
-        if (cached && cached.contentHash === contentHash && Date.now() - cached.timestamp < 10 * 60 * 1000) {
-            console.log(`[AI Background] Cache'den alındı: ${selectedFile}`);
-            return;
-        }
+        console.log(`[AI Background] Analiz başlatılıyor: ${nextFile}`);
 
-        // Önceki isteği iptal et
-        abortRef.current?.abort();
-        abortRef.current = new AbortController();
+        // İçeriği bul (selectedFile ise direct, değilse diskten okumak gerekebilir ama şimdilik selectedFile odaklı)
+        // Eğer kuyrukta bekleyen dosya hala selectedFile ise mevcut content kullanılır
+        const contentToAnalyze = nextFile === selectedFile ? fileContent : '';
 
-        // 1.5 saniye debounce — tab değişimlerinde flood'u önle
-        const timer = setTimeout(async () => {
-            if (isAnalyzingRef.current) {
-                // Kuyruğa ekle
-                setState(prev => ({
-                    ...prev,
-                    analysisQueue: [...prev.analysisQueue.filter(p => p !== selectedFile), selectedFile],
-                }));
-                return;
-            }
-
-            isAnalyzingRef.current = true;
-            setState(prev => ({ ...prev, currentlyAnalyzing: selectedFile }));
-
-            console.log(`[AI Background] Analiz başlatılıyor: ${selectedFile}`);
-            const result = await analyzeFile(selectedFile, fileContent);
-
+        if (contentToAnalyze) {
+            const result = await analyzeFile(nextFile, contentToAnalyze);
             if (result) {
-                analysisCache.current.set(selectedFile, { timestamp: Date.now(), contentHash });
+                const contentHash = hashContent(contentToAnalyze);
+                analysisCache.current.set(nextFile, { timestamp: Date.now(), contentHash });
                 setState(prev => {
                     const newResults = new Map(prev.results);
-                    newResults.set(selectedFile, result);
+                    newResults.set(nextFile, result);
                     return { ...prev, results: newResults, currentlyAnalyzing: null };
                 });
 
-                // Yüksek öncelikli sorun varsa panel'i otomatik aç
                 if (result.issues.some(i => i.severity === 'high')) {
                     setIsPanelOpen(true);
                 }
             } else {
                 setState(prev => ({ ...prev, currentlyAnalyzing: null }));
             }
+        } else {
+            setState(prev => ({ ...prev, currentlyAnalyzing: null }));
+        }
 
-            isAnalyzingRef.current = false;
+        isAnalyzingRef.current = false;
 
-            // Kuyrukta bekleyen dosya var mı?
+        // Kuyrukta başka dosya varsa bir sonraki tick'te devam et
+        setTimeout(() => {
+            // State güncellemeleri asenkron olduğu için en güncel haline bakmak için 
+            // useEffect veya bağımlılıkla tetiklenebilir.
+        }, 100);
+    }, [state.analysisQueue, isAIReady, selectedFile, fileContent, analyzeFile]);
+
+    /** Dosya değiştiğinde veya açıldığında otomatik analiz tetikle */
+    useEffect(() => {
+        if (!selectedFile || !fileContent || !isAIReady) return;
+        if (!isAnalyzable(selectedFile)) return;
+
+        if (!shouldAnalyze(selectedFile, fileContent)) {
+            return;
+        }
+
+        const timer = setTimeout(() => {
             setState(prev => {
-                if (prev.analysisQueue.length > 0) {
-                    // Sonraki analiz için küçük gecikme
-                    const [next, ...rest] = prev.analysisQueue;
-                    console.log(`[AI Background] Kuyruktan alınıyor: ${next}`);
-                    return { ...prev, analysisQueue: rest };
-                }
-                return prev;
+                const isAlreadyInQueue = prev.analysisQueue.includes(selectedFile);
+                if (isAlreadyInQueue || prev.currentlyAnalyzing === selectedFile) return prev;
+
+                return {
+                    ...prev,
+                    analysisQueue: [...prev.analysisQueue, selectedFile]
+                };
             });
         }, 1500);
 
-        return () => {
-            clearTimeout(timer);
-        };
-    }, [selectedFile, fileContent, isAIReady, analyzeFile]);
+        return () => clearTimeout(timer);
+    }, [selectedFile, fileContent, isAIReady]);
+
+    // Kuyruk değişimlerini izle ve işleme başlat
+    useEffect(() => {
+        if (state.analysisQueue.length > 0 && !state.currentlyAnalyzing && !isAnalyzingRef.current) {
+            processQueue();
+        }
+    }, [state.analysisQueue, state.currentlyAnalyzing, processQueue]);
 
     /** Tüm sonuçları düz dizi olarak al */
     const allIssues = Array.from(state.results.values()).flatMap(r => r.issues);

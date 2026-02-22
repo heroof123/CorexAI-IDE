@@ -21,33 +21,38 @@
 
 ### 🤖 AI Integration
 - **Local LLM Support** - LM Studio, Ollama, GGUF models
-- **Smart Code Completion** - Context-aware suggestions
-- **Code Analysis** - Automatic bug detection and fixes
-- **Natural Language** - Chat with your codebase
+- **Advanced GGUF Engine** - Native llama-cpp integration with auto-VRAM estimation and GPU/CPU fallback
+- **Smart Code Completion** - Context-aware suggestions using RAG (Retrieval Augmented Generation)
+- **Autonomous Agent** - Multi-step planning and execution for complex refactors
+- **Privacy First** - All AI processing stays on your machine
 
 ### 📝 Editor
-- **Monaco Editor** - VS Code-like editing experience
-- **Multi-tab Support** - Work on multiple files
-- **Syntax Highlighting** - 100+ languages
-- **Diff Viewer** - Side-by-side comparison
+- **Monaco Editor** - Full VS Code-like experience
+- **AI-Native Editing** - Automated fixes, diff-based code application with safety backups
+- **Universal Syntax** - Tree-sitter powered analysis for 100+ languages
+- **Intelligent Navigation** - Symbol-based search and project-wide reference tracking
 
 ### 🔧 Development Tools
-- **Git Integration** - Commit, push, pull, branches
-- **Terminal** - Integrated terminal panel
-- **Task Manager** - Kanban board for tasks
-- **Docker Support** - Container management
-
-### 🌐 Integrations
-- **GitHub OAuth** - Sync settings and repos
-- **Microsoft OAuth** - OneDrive integration
-- **Database Browser** - SQLite, MySQL, PostgreSQL
-- **API Testing** - Postman-like REST client
+- **Git Integration** - Visual diffs, commit history, and automated summaries
+- **Integrated Terminal** - AI-connected terminal with safe command execution
+- **RAG Pipeline** - Vector database (LanceDB) powered codebase indexing
+- **Task Kanban** - Automated task extraction from comments (TODO/FIXME)
 
 ### 🎨 User Interface
-- **Professional Light Theme** - High-contrast, GitHub-inspired aesthetic
-- **Dynamic Theming** - Peak contrast and professional color palettes
-- **Visual Project Graph** - SVG-based dependency and structure visualization
-- **Optimized Layout** - Razor-sharp text and clear borders
+- **Premium Glassmorphism** - Futuristic translucent panels and neon accents
+- **Ultra-Responsive** - Throttled/debounced UI for peak performance
+- **Visual Project Graph** - Dynamic structure visualization
+- **Accessibility** - High contrast themes and clear typography
+
+---
+
+## 🚀 Recent Major Updates (v0.2.0 - Current)
+- **Robust GGUF Support**: Fixed context length issues and optimized batch processing.
+- **Security Hardening**: Secure storage for all API keys, shell injection protection, and safe terminal commands.
+- **RAG Optimization**: Vector DB distance-based filtering and smart code chunking for 10x better context.
+- **UX Excellence**: Premium button styles, smooth animations, and zero-latency chat interface.
+- **Stability Core**: Integrated file recovery mechanism (Safety Backups) before any AI-driven file edit.
+- **Memory Safety**: Global AudioContext management and efficient resource unloading.
 
 ---
 

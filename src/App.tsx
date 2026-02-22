@@ -140,15 +140,31 @@ function AppContent() {
 
   // 🤖 Connect Autonomous Agent to Chat
   useEffect(() => {
-    agentService.registerChatCallback((msg: any) => {
+    const callback = (msg: any) => {
       chat.addMessage(msg);
       // Otonom ajan mesaj gönderdiğinde chat panelini otomatik açabiliriz?
       if (!showRightSidebar) toggleRightSidebar();
-    });
-  }, [chat.addMessage]);
+    };
+
+    agentService.registerChatCallback(callback);
+
+    // Cleanup - Eski callback'i temizle
+    return () => {
+      agentService.unregisterChatCallback(callback);
+    };
+  }, [chat.addMessage, showRightSidebar, toggleRightSidebar]);
 
   // ── AI Background Analysis (proaktif — dosya açıldığında otomatik) ────────
-  const isAIReady = !!localStorage.getItem("corex-ai-providers");
+  const [isAIReady, setIsAIReady] = useState(false);
+
+  useEffect(() => {
+    const checkAI = async () => {
+      const { loadAIProviders } = await import("./services/aiProvider");
+      const providers = await loadAIProviders();
+      setIsAIReady(providers.length > 0);
+    };
+    checkAI();
+  }, []);
   const aiAnalysis = useAIBackgroundAnalysis(editor.selectedFile, editor.fileContent, isAIReady);
 
   // Workflow notification state
@@ -685,14 +701,11 @@ function AppContent() {
                 <div className="w-[1px] h-3 bg-white/10 mx-2" />
 
                 {/* Direct Navigation Links */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
                   {[
                     { id: "explorer", name: t("activity.explorer") },
                     { id: "search", name: t("activity.search") },
                     { id: "source-control", name: t("activity.sourceControl") },
-                    { id: "run-debug", name: t("activity.runDebug") },
-                    { id: "api-testing", name: t("activity.apiTesting") },
-                    { id: "tech-debt", name: "Tech Debt" },
                   ].map(nav => (
                     <button
                       key={nav.id}
@@ -708,6 +721,41 @@ function AppContent() {
                       {nav.name}
                     </button>
                   ))}
+
+                  <div className="w-[1px] h-3 bg-white/10 mx-1" />
+
+                  {/* Secondary Views Dropdown */}
+                  <div className="relative group">
+                    <button className="px-2 py-1 rounded text-[10px] uppercase tracking-wider text-neutral-400 hover:text-white hover:bg-white/5 transition-all flex items-center gap-1">
+                      {t("menu.view")} ▾
+                    </button>
+                    <div className="absolute top-full left-0 mt-1 w-44 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-1 backdrop-blur-2xl">
+                      {[
+                        { id: "run-debug", name: t("activity.runDebug"), icon: "🐞" },
+                        { id: "api-testing", name: t("activity.apiTesting"), icon: "📡" },
+                        { id: "tech-debt", name: "Tech Debt", icon: "🛠️" },
+                        { id: "security-fortress", name: "Security", icon: "🛡️" },
+                        { id: "model-roulette", name: "Roulette", icon: "🎰" },
+                        { id: "marketplace", name: "Marketplace", icon: "🛒" },
+                        { id: "academy", name: "Academy", icon: "🎓" },
+                      ].map(nav => (
+                        <button
+                          key={nav.id}
+                          onClick={() => {
+                            ui.setActiveView(nav.id);
+                            setLeftSidebarVisible(true);
+                          }}
+                          className={`flex items-center gap-2 w-full text-left px-3 py-2 rounded-lg text-[11px] transition-colors ${ui.activeView === nav.id && showLeftSidebar
+                            ? "bg-blue-500/20 text-blue-400 font-bold"
+                            : "hover:bg-white/5 text-neutral-400 hover:text-white"
+                            }`}
+                        >
+                          <span className="text-sm">{nav.icon}</span>
+                          {nav.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1080,12 +1128,23 @@ function AppContent() {
                           return fn === afn || f.path.includes(action.filePath);
                         });
                         if (fileInIndex) actualFilePath = fileInIndex.path;
+
+                        // FIX-32: Recovery mechanism (Safety first)
+                        let backupContent: string | null = null;
+                        try {
+                          backupContent = await invoke("read_file", { path: actualFilePath });
+                        } catch { /* New file */ }
+
                         try {
                           await invoke("write_file", {
                             path: actualFilePath,
                             content: action.content,
                           });
-                        } catch {
+                        } catch (err) {
+                          // Try restore if failed
+                          if (backupContent) {
+                            await invoke("write_file", { path: actualFilePath, content: backupContent });
+                          }
                           await invoke("create_file", {
                             path: actualFilePath,
                             content: action.content,

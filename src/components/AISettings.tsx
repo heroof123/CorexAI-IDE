@@ -1,11 +1,14 @@
 import { useState, useEffect } from "react";
-import GGUFModelBrowser from "./GGUFModelBrowser"; // Eski çalışan browser
+import { invoke } from "@tauri-apps/api/core";
+import { showToast } from "./ToastContainer";
+import GGUFModelBrowser from "./GGUFModelBrowser";
 import {
   getAutonomyConfig,
   saveAutonomyConfig,
   getAutonomyLevelDescription,
   type AutonomyLevel
 } from "../services/autonomy";
+import { storage } from "../services/storage";
 
 interface AIProvider {
   id: string;
@@ -115,6 +118,7 @@ export default function AISettings({ isVisible, onClose, onProviderChange }: AIS
   const [autonomyLevel, setAutonomyLevel] = useState<AutonomyLevel>(3);
   const [editingProvider, setEditingProvider] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<AIProvider>>({});
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null); // FIX-42
 
   // Yeni provider ekleme formu
   const [newProvider, setNewProvider] = useState<Partial<AIProvider>>({
@@ -143,45 +147,62 @@ export default function AISettings({ isVisible, onClose, onProviderChange }: AIS
 
   // LocalStorage'dan ayarları yükle
   useEffect(() => {
-    const savedProviders = localStorage.getItem('corex-ai-providers');
-    if (savedProviders) {
-      try {
-        const parsed = JSON.parse(savedProviders);
+    const loadData = async () => {
+      const savedProviders = await storage.getSettings<AIProvider[]>('corex-ai-providers');
+      const savedKeys = await storage.getSecure<Record<string, string>>('corex-ai-keys') || {};
+
+      if (savedProviders) {
+        // FIX-38: API Keyleri güvenli olarak birleştir
+        const withKeys = savedProviders.map(p => ({
+          ...p,
+          apiKey: savedKeys[p.id] || p.apiKey
+        }));
 
         // GGUF provider yoksa ekle (backward compatibility)
-        const hasGguf = parsed.some((p: AIProvider) => p.id === 'gguf-direct');
+        const hasGguf = withKeys.some((p: AIProvider) => p.id === 'gguf-direct');
         if (!hasGguf) {
           const ggufProvider = defaultProviders.find(p => p.id === 'gguf-direct');
           if (ggufProvider) {
-            parsed.push(ggufProvider);
-            localStorage.setItem('corex-ai-providers', JSON.stringify(parsed));
+            const updated = [...withKeys, ggufProvider];
+            setProviders(updated);
+            await storage.setSettings('corex-ai-providers', updated);
+          } else {
+            setProviders(withKeys);
           }
+        } else {
+          setProviders(withKeys);
         }
-
-        setProviders(parsed);
-      } catch (error) {
-        console.error('AI providers yüklenemedi:', error);
       }
-    }
 
-    // Load autonomy config
-    const config = getAutonomyConfig();
-    setAutonomyLevel(config.level);
+      // Load autonomy config
+      const config = getAutonomyConfig();
+      setAutonomyLevel(config.level);
+    };
+
+    loadData();
   }, []);
 
   // Ayarları kaydet
-  const saveProviders = (newProviders: AIProvider[]) => {
-    console.log('💾 Provider\'lar kaydediliyor:', newProviders);
+  const saveProviders = async (newProviders: AIProvider[]) => {
     setProviders(newProviders);
-    localStorage.setItem('corex-ai-providers', JSON.stringify(newProviders));
+
+    // FIX-38: API Key'i normal ayarlardan sıyırıp ayrı yazıyoruz
+    const safeProviders = newProviders.map(p => ({
+      ...p,
+      apiKey: undefined
+    }));
+    await storage.setSettings('corex-ai-providers', safeProviders);
+
+    const keys: Record<string, string> = {};
+    newProviders.forEach(p => { if (p.apiKey) keys[p.id] = p.apiKey; });
+    await storage.setSecure('corex-ai-keys', keys);
+
     onProviderChange?.(newProviders);
 
     // Custom event gönder
     window.dispatchEvent(new CustomEvent('ai-providers-updated', {
       detail: newProviders
     }));
-
-    console.log('📡 Provider güncelleme eventi gönderildi');
   };
 
   // Provider düzenleme başlat
@@ -201,7 +222,7 @@ export default function AISettings({ isVisible, onClose, onProviderChange }: AIS
     }
 
     if (editForm.id !== 'gguf-direct' && (!editForm.host || !editForm.port)) {
-      alert('Host ve Port alanları zorunludur!');
+      showToast('Host ve Port alanları zorunludur!', 'error'); // FIX-42
       return;
     }
 
@@ -239,24 +260,23 @@ export default function AISettings({ isVisible, onClose, onProviderChange }: AIS
 
   // Provider bağlantı testi
   const testConnection = async (provider: AIProvider) => {
+    if (provider.id === 'gguf-direct') return; // GGUF test edilmez
+
     setConnectionStatus(prev => ({ ...prev, [provider.id]: 'checking' }));
 
     try {
-      console.log('🔍 Bağlantı test ediliyor:', provider.baseUrl);
-
-      // aiProvider.ts'teki test fonksiyonunu kullan
-      const { testProviderConnection } = await import('../services/aiProvider');
-      const isConnected = await testProviderConnection(provider);
+      // FIX-41: Test securely via Rust backend (Bypasses CORS entirely)
+      const isConnected = await invoke<boolean>('test_provider_connection', {
+        baseUrl: provider.baseUrl,
+        api_key: provider.apiKey || ''
+      });
 
       if (isConnected) {
         setConnectionStatus(prev => ({ ...prev, [provider.id]: 'connected' }));
-        console.log('✅ Bağlantı başarılı:', provider.name);
       } else {
         throw new Error('Bağlantı başarısız');
       }
-
     } catch (error) {
-      console.error('❌ Bağlantı hatası:', error);
       setConnectionStatus(prev => ({ ...prev, [provider.id]: 'error' }));
     }
   };
@@ -287,7 +307,7 @@ export default function AISettings({ isVisible, onClose, onProviderChange }: AIS
   // Yeni provider ekle
   const addProvider = () => {
     if (!newProvider.name || (!newProvider.baseUrl && (!newProvider.host || !newProvider.port))) {
-      alert('Provider adı ve (Base URL veya Host+Port) gerekli!');
+      showToast('Provider adı ve (Base URL veya Host+Port) gerekli!', 'error'); // FIX-42
       return;
     }
 
@@ -338,7 +358,7 @@ export default function AISettings({ isVisible, onClose, onProviderChange }: AIS
   // Yeni model ekle
   const addModel = () => {
     if (!newModel.name || !newModel.displayName || !selectedProvider) {
-      alert('Model adı, görünen ad ve provider seçimi gerekli!');
+      showToast('Model adı, görünen ad ve provider seçimi gerekli!', 'error'); // FIX-42
       return;
     }
 
@@ -375,10 +395,9 @@ export default function AISettings({ isVisible, onClose, onProviderChange }: AIS
 
   // Provider sil
   const deleteProvider = (providerId: string) => {
-    if (confirm('Bu provider\'ı silmek istediğinizden emin misiniz?')) {
-      const newProviders = providers.filter(p => p.id !== providerId);
-      saveProviders(newProviders);
-    }
+    const newProviders = providers.filter(p => p.id !== providerId);
+    saveProviders(newProviders);
+    setDeleteConfirm(null);
   };
 
   // Mevcut modelleri API'den getir
@@ -422,19 +441,15 @@ export default function AISettings({ isVisible, onClose, onProviderChange }: AIS
 
         saveProviders(newProviders);
 
-        // Başarı mesajı - popup yerine console
-        console.log(`✅ ${newModels.length} model başarıyla eklendi!`);
-        console.log('📋 Eklenen modeller:', newModels.map(m => m.displayName));
-
-        // Kullanıcıya kısa bildirim
-        alert(`✅ ${newModels.length} model eklendi!\n\n${newModels.map(m => `• ${m.displayName}`).join('\n')}`);
+        // Başarı mesajı
+        showToast(`✅ ${newModels.length} model eklendi!`, 'success');
 
         // Model seçiciyi güncelle
         window.dispatchEvent(new CustomEvent('ai-providers-updated', {
           detail: newProviders
         }));
       } else {
-        alert('⚠️ Bu provider\'dan model listesi boş geldi. Sunucunun çalıştığından ve modellerin yüklendiğinden emin olun.');
+        showToast('⚠️ Bu provider\'dan model listesi boş geldi. Sunucunun çalıştığından emin olun.', 'error');
       }
     } catch (error) {
       console.error('❌ Model getirme hatası:', error);
@@ -466,16 +481,14 @@ export default function AISettings({ isVisible, onClose, onProviderChange }: AIS
     }
   };
 
-  // Model sil
+  // Model sil  
   const deleteModel = (providerId: string, modelId: string) => {
-    if (confirm('Bu modeli silmek istediğinizden emin misiniz?')) {
-      const newProviders = providers.map(p =>
-        p.id === providerId
-          ? { ...p, models: p.models.filter(m => m.id !== modelId) }
-          : p
-      );
-      saveProviders(newProviders);
-    }
+    const newProviders = providers.map(p =>
+      p.id === providerId
+        ? { ...p, models: p.models.filter(m => m.id !== modelId) }
+        : p
+    );
+    saveProviders(newProviders);
   };
 
   const getStatusColor = (status: 'online' | 'offline' | 'checking' | 'connected' | 'error' | undefined) => {
@@ -711,12 +724,21 @@ export default function AISettings({ isVisible, onClose, onProviderChange }: AIS
                             )}
                           </button>
                           {provider.type === 'custom' && (
-                            <button
-                              onClick={() => deleteProvider(provider.id)}
-                              className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs transition-colors"
-                            >
-                              🗑️ Sil
-                            </button>
+                            deleteConfirm === provider.id ? (
+                              <div className="flex gap-1" onMouseLeave={() => setDeleteConfirm(null)}>
+                                <button onClick={() => deleteProvider(provider.id)}
+                                  className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs transition-colors">Evet</button>
+                                <button onClick={() => setDeleteConfirm(null)}
+                                  className="px-2 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded text-xs transition-colors">İptal</button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setDeleteConfirm(provider.id)}
+                                className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs transition-colors"
+                              >
+                                🗑️ Sil
+                              </button>
+                            )
                           )}
                         </div>
                       </div>
@@ -729,11 +751,7 @@ export default function AISettings({ isVisible, onClose, onProviderChange }: AIS
 
           {activeTab === 'models' && (
             <div className="space-y-2">
-              {(() => {
-                console.log('📋 Providers:', providers.map(p => ({ id: p.id, name: p.name })));
-                console.log('🎯 Selected Provider:', selectedProvider);
-                return null;
-              })()}
+
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-[var(--color-text)]">AI Modelleri</h3>
                 <div className="flex items-center gap-2">
@@ -814,23 +832,24 @@ export default function AISettings({ isVisible, onClose, onProviderChange }: AIS
                             <span>Max Tokens:</span>
                             <input
                               type="number"
-                              value={model.maxTokens || 4096}
-                              onChange={(e) => {
+                              defaultValue={model.maxTokens || 4096}
+                              onBlur={(e) => {
                                 const newValue = parseInt(e.target.value) || 4096;
-                                const newProviders = providers.map(p =>
-                                  p.id === selectedProvider
-                                    ? {
-                                      ...p,
-                                      models: p.models.map(m =>
-                                        m.id === model.id
-                                          ? { ...m, maxTokens: newValue }
-                                          : m
-                                      )
-                                    }
-                                    : p
-                                );
-                                saveProviders(newProviders);
-                                console.log(`✅ ${model.displayName} maxTokens güncellendi:`, newValue);
+                                if (newValue !== model.maxTokens) {
+                                  const newProviders = providers.map(p =>
+                                    p.id === selectedProvider
+                                      ? {
+                                        ...p,
+                                        models: p.models.map(m =>
+                                          m.id === model.id
+                                            ? { ...m, maxTokens: newValue }
+                                            : m
+                                        )
+                                      }
+                                      : p
+                                  );
+                                  saveProviders(newProviders);
+                                }
                               }}
                               min="512"
                               max="128000"
@@ -1230,10 +1249,11 @@ export default function AISettings({ isVisible, onClose, onProviderChange }: AIS
         <div className="p-2 border-t border-[var(--color-border)] bg-[var(--color-background)] rounded-b-xl">
           <div className="flex items-center justify-between">
             <div className="text-xs text-neutral-500">
-              💡 Ayarlar otomatik kaydedilir • API anahtarları güvenli şekilde saklanır
+              💡 Ayarlar otomatik kaydedilir • API anahtarları Tauri Store'da güvenli şifrelenir
             </div>
             <div className="flex items-center gap-2">
               {/* Canlı bağlantı durumu */}
+
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1">
                   <div className={`w-2 h-2 rounded-full ${Object.values(connectionStatus).some(status => status === 'online')

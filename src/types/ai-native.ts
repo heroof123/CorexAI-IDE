@@ -58,7 +58,14 @@ export interface FileAnalysis {
   file_path: string;
   symbols: Symbol[];
   imports: string[];
+  importsDetail?: Array<{
+    moduleName: string;
+    importedSymbols: string[];
+    isDefault: boolean;
+    line: number;
+  }>;
   exports: string[];
+  linesOfCode: number;
   complexity: number;
   dependencies: string[];
   dependents: string[];
@@ -138,7 +145,7 @@ export interface DependencyGraph {
 // Background Reasoning Types
 // ============================================================================
 
-export type InsightType = 
+export type InsightType =
   | 'complexity_warning'
   | 'bug_detection'
   | 'refactoring_suggestion'

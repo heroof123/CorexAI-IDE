@@ -25,32 +25,36 @@ export default function ModelComparison({ onClose }: ModelComparisonProps) {
   const messagesEndRef2 = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const providers = loadAIProviders();
-    const allModels: AIModel[] = [];
-    providers.forEach(p => {
-      // GGUF provider için tüm indirilmiş modelleri ekle
-      if (p.id === 'gguf-direct' || p.baseUrl === 'internal://gguf') {
-        allModels.push(...p.models.filter(m => m.isActive || (m as any).isDownloaded));
-      } else if (p.isActive) {
-        // Diğer provider'lar için sadece aktif olanları ekle
-        allModels.push(...p.models.filter(m => m.isActive));
+    const init = async () => {
+      const providers = await loadAIProviders();
+      const allModels: AIModel[] = [];
+      providers.forEach(p => {
+        // GGUF provider için tüm indirilmiş modelleri ekle
+        if (p.id === 'gguf-direct' || p.baseUrl === 'internal://gguf') {
+          allModels.push(...p.models.filter(m => m.isActive || (m as any).isDownloaded));
+        } else if (p.isActive) {
+          // Diğer provider'lar için sadece aktif olanları ekle
+          allModels.push(...p.models.filter(m => m.isActive));
+        }
+      });
+
+      // Tekilleştir (ID'ye göre)
+      const uniqueModels = allModels.filter((model, index, self) =>
+        index === self.findIndex((m) => m.id === model.id)
+      );
+
+      setAvailableModels(uniqueModels);
+
+      // Varsayılan seçimleri ayarla
+      if (uniqueModels.length >= 2) {
+        setModel1Id(uniqueModels[0].id);
+        setModel2Id(uniqueModels[1].id);
+      } else if (uniqueModels.length === 1) {
+        setModel1Id(uniqueModels[0].id);
       }
-    });
+    };
 
-    // Tekilleştir (ID'ye göre)
-    const uniqueModels = allModels.filter((model, index, self) =>
-      index === self.findIndex((m) => m.id === model.id)
-    );
-
-    setAvailableModels(uniqueModels);
-
-    // Varsayılan seçimleri ayarla
-    if (uniqueModels.length >= 2) {
-      setModel1Id(uniqueModels[0].id);
-      setModel2Id(uniqueModels[1].id);
-    } else if (uniqueModels.length === 1) {
-      setModel1Id(uniqueModels[0].id);
-    }
+    init();
   }, []);
 
   useEffect(() => {

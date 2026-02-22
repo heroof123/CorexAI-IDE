@@ -16,6 +16,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-store = "2"
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
@@ -23,6 +24,7 @@ reqwest = { version = "0.11", features = ["json", "stream"] }
 log = "0.4"
 env_logger = "0.11"
 encoding_rs = "0.8"
+walkdir = "2"
 
 # 🆕 GGUF Model Support (CPU-only by default, CUDA/Vulkan optional)
 llama-cpp-2 = { version = "0.1.133", features = [] }

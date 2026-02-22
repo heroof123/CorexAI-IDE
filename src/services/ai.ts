@@ -1,4 +1,4 @@
-// services/ai.ts
+import { storage } from './storage';
 // import { invoke } from '@tauri-apps/api/core'; // ✅ FIXED: Use Rust backend (ŞU ANDA KULLANILMIYOR)
 // import { shouldIndexFile } from './embedding'; // Import from embedding service (ŞU ANDA KULLANILMIYOR)
 // import { cacheManager, generateAICacheKey } from './cache'; // Cache sistemi (gelecekte kullanılacak)
@@ -310,7 +310,10 @@ AI: "Tamam, hesap makinesi oluşturuyorum 🧮
     
     function calculateResult() {
       try {
-        document.getElementById('display').value = eval(document.getElementById('display').value);
+        // eval() yerine güvenli bir hesaplama mantığı kullanılmalı
+        const expression = document.getElementById('display').value;
+        // Basit bir hesaplama örneği (gerçek projede bir matematik kütüphanesi önerilir)
+        document.getElementById('display').value = Function('"use strict";return (' + expression + ')')();
       } catch (e) {
         document.getElementById('display').value = 'Hata';
       }
@@ -552,19 +555,14 @@ export async function sendToAI(
     }
 
     // 🆕 GGUF model config'inden context ve output limitlerini al
-    const ggufConfig = localStorage.getItem('gguf-active-model');
-    if (ggufConfig) {
-      try {
-        const config = JSON.parse(ggufConfig);
-        conversationContext.maxContextTokens = config.contextLength || 32768;
-        console.log(`📏 Context limit güncellendi: ${conversationContext.maxContextTokens}`);
-      } catch (e) {
-        console.warn('⚠️ GGUF config okunamadı, default kullanılıyor');
-      }
+    const config = await storage.getSettings<any>('gguf-active-model');
+    if (config) {
+      conversationContext.maxContextTokens = config.contextLength || 32768;
+      console.log(`📏 Context limit güncellendi: ${conversationContext.maxContextTokens}`);
     }
 
     // 🆕 Output mode'u localStorage'dan al
-    const outputMode = localStorage.getItem('ai-output-mode') || 'normal';
+    const outputMode = await storage.getSettings<string>('ai-output-mode') || 'normal';
     conversationContext.maxOutputTokens =
       outputMode === 'brief' ? 2048 :
         outputMode === 'detailed' ? 16384 : 8192;

@@ -15,7 +15,7 @@ const ERROR_PATTERNS: ErrorPattern[] = [
 
 export class AgentService {
   private static instance: AgentService;
-  private onMessageCallback?: (msg: Omit<Message, "id">) => void;
+  private chatCallbacks: Set<(msg: Omit<Message, "id">) => void> = new Set();
   private isHealing: boolean = false;
 
   private constructor() { }
@@ -27,8 +27,12 @@ export class AgentService {
     return AgentService.instance;
   }
 
-  public registerChatCallback(callback: (msg: Omit<Message, "id">) => void) {
-    this.onMessageCallback = callback;
+  public registerChatCallback(callback: (msg: Omit<Message, "id">) => void): void {
+    this.chatCallbacks.add(callback);
+  }
+
+  public unregisterChatCallback(callback: (msg: Omit<Message, "id">) => void): void {
+    this.chatCallbacks.delete(callback);
   }
 
   /**
@@ -51,13 +55,16 @@ export class AgentService {
   }
 
   private async handleErrorDetected(errorLine: string, context: string, pattern: ErrorPattern) {
-    if (!this.onMessageCallback) return;
-    this.isHealing = true; // Prevent loop
-
-    this.onMessageCallback({
-      role: "system",
-      content: `🤖 **Otonom Ajan Bir ${pattern.type.toUpperCase()} Hatası Tespit Etti!**\n\nTerminalde şu hata oluştu:\n\`\`\`\n${errorLine}\n\`\`\`\n\nBağlam:\n\`\`\`text\n${context}\n\`\`\`\n\n[✨ OTOMATİK DÜZELT](command:corex.applyAutofix?${encodeURIComponent(context)})`,
-      timestamp: Date.now(),
+    this.chatCallbacks.forEach(callback => {
+      try {
+        callback({
+          role: "system",
+          content: `🤖 **Otonom Ajan Bir ${pattern.type.toUpperCase()} Hatası Tespit Etti!**\n\nTerminalde şu hata oluştu:\n\`\`\`\n${errorLine}\n\`\`\`\n\nBağlam:\n\`\`\`text\n${context}\n\`\`\`\n\n[✨ OTOMATİK DÜZELT](command:corex.applyAutofix?${encodeURIComponent(context)})`,
+          timestamp: Date.now(),
+        });
+      } catch (err) {
+        console.error("AgentService callback error:", err);
+      }
     });
 
     // Reset healing state after some time or after fix
@@ -70,14 +77,16 @@ export class AgentService {
    * 🧹 Proactively suggest refactoring for complex code
    */
   public proposeRefactoring(filePath: string, symbol: any, complexity: number) {
-    if (!this.onMessageCallback) return;
-
-    console.log(`🧹 Agent proposing refactoring for ${symbol.name} (complexity: ${complexity})`);
-
-    this.onMessageCallback({
-      role: "system",
-      content: `🧹 **Refactoring Önerisi: \`${symbol.name}\`**\n\nBu fonksiyonun karmaşıklığı oldukça yüksek (**${complexity}**). Kodu daha okunabilir ve sürdürülebilir hale getirmek için parçalara bölmemi ister misin?\n\n[Refactor Uygula](command:corex.applyRefactor?${encodeURIComponent(JSON.stringify({ filePath, symbol }))})`,
-      timestamp: Date.now(),
+    this.chatCallbacks.forEach(callback => {
+      try {
+        callback({
+          role: "system",
+          content: `🧹 **Refactoring Önerisi: \`${symbol.name}\`**\n\nBu fonksiyonun karmaşıklığı oldukça yüksek (**${complexity}**). Kodu daha okunabilir ve sürdürülebilir hale getirmek için parçalara bölmemi ister misin?\n\n[Refactor Uygula](command:corex.applyRefactor?${encodeURIComponent(JSON.stringify({ filePath, symbol }))})`,
+          timestamp: Date.now(),
+        });
+      } catch (err) {
+        console.error("AgentService callback error:", err);
+      }
     });
 
     // Award XP for clean code awareness
@@ -91,13 +100,17 @@ export class AgentService {
 
     try {
       // This will be called via command from UI
-      if (this.onMessageCallback) {
-        this.onMessageCallback({
-          role: "system",
-          content: "⏳ **Düzeltme uygulanıyor...** AI projeyi analiz ediyor.",
-          timestamp: Date.now(),
-        });
-      }
+      this.chatCallbacks.forEach(callback => {
+        try {
+          callback({
+            role: "system",
+            content: "⏳ **Düzeltme uygulanıyor...** AI projeyi analiz ediyor.",
+            timestamp: Date.now(),
+          });
+        } catch (err) {
+          console.error("AgentService callback error:", err);
+        }
+      });
 
       // In a real scenario, this would trigger a specialized agent prompt
       // For now, we'll emit an event that the UI can catch to show excitement

@@ -46,21 +46,21 @@ Hedef: Sen düşünmeden kodun orada olsun.
 
 ## 🛡️ 5. Security Fortress (SonarQube Entegrasyonu)
 Hedef: Hacklenemez kod.
-- [ ] **Canlı Güvenlik Taraması**:
-    - [ ] Kod yazarken real-time olarak SQL Injection, XSS, Secret Key ifşası gibi açıkları kırmızı neon ışıkla işaretler.
-- [ ] **Dependency Watchdog**:
-    - [ ] `package.json`'a eklediğin bir pakette güvenlik açığı varsa anında uyarır ve güvenli versiyonu önerir.
+- [x] **Canlı Güvenlik Taraması**:
+    - [x] Kod yazarken real-time olarak SQL Injection, XSS, Secret Key ifşası gibi açıkları kırmızı neon ışıkla işaretler.
+- [x] **Dependency Watchdog**:
+    - [x] `package.json`'a eklediğin bir pakette güvenlik açığı varsa anında uyarır ve güvenli versiyonu önerir.
 
 ## 📊 6. Gelişmiş Analiz & Görselleştirme (Data Hacking)
 Hedef: Yapıyı matrix gibi görmek.
 - [x] **3D Code Universe**:
     - [x] Proje dosyalarını ve bağlantılarını (import/export) 3D uzayda (WebGL) görselleştir. Karmaşık modüller dev gezegenler gibi görünsün.
-- [ ] **Heatmap Explorer**:
-    - [ ] Dosya ağacında, en çok hata çıkan veya en karmaşık dosyalar "Sıcak (Kırmızı)", stabil dosyalar "Soğuk (Mavi)" görünsün.
+- [x] **Heatmap Explorer**:
+    - [x] Dosya ağacında, en çok hata çıkan veya en karmaşık dosyalar "Sıcak (Kırmızı)", stabil dosyalar "Soğuk (Mavi)" görünsün.
 - [x] **Todo & Tech Debt Tracker**:
     - [x] Projedeki `// TODO` ve `// FIXME` yorumlarını tarayıp Kanban benzeri bir panoda görselleştirme.
 
-## 🗣️ 7. Tony Stark Modu (Multimodal)
+## 🗣️ 7. Corex Voice (Multimodal)
 Hedef: Klavyesiz kodlama.
 - [ ] **Voice Coding**: "Corex, sunucuyu 8080 portunda başlat" komutunu sese dök.
 - [ ] **Vision-to-Code**: Bir web sitesinin ekran görüntüsünü at, HTML/CSS kodunu çıkarsın.
@@ -83,18 +83,18 @@ Hedef: Kod yazmayı bağımlılık yapıcı hale getirmek.
 
 ## 🤖 11. Multi-LLM Arena (Model Savaşları)
 Hedef: Tek modele bağlı kalmamak.
-- [ ] **Model Roulette**: Arka planda GPT-4, Claude ve Gemini'yi aynı anda çalıştırıp en iyi cevabı seçtiren sistem.
+- [x] **Model Roulette**: Arka planda GPT-4, Claude ve Gemini'yi aynı anda çalıştırıp en iyi cevabı seçtiren sistem.
 - [x] **Local LLM Manager**: Ollama entegrasyonu ile yerel modelleri tek tıkla indirip kullanma.
 
 ## 🧩 12. Eklenti ve Modül Sistemi (Ecosystem)
 Hedef: Sonsuz genişletilebilirlik.
-- [ ] **Plugin Marketplace**: Kullanıcıların kendi eklentilerini yazıp paylaşabileceği sistem.
-- [ ] **Theme Studio**: Görsel tema tasarımcısı.
+- [x] **Plugin Marketplace**: Kullanıcıların kendi eklentilerini yazıp paylaşabileceği sistem.
+- [x] **Theme Studio**: Görsel tema tasarımcısı.
 
 ## 🎓 13. Interactive Learning Mode (Academy)
 Hedef: Editör içinde eğitim.
-- [ ] **Interactive Tutorials**: Adım adım kodlama rehberleri.
-- [ ] **AI Code Explainer**: Karmaşık kodları basitçe açıklayan mod.
+- [x] **Interactive Tutorials**: Adım adım kodlama rehberleri.
+- [x] **AI Code Explainer**: Karmaşık kodları basitçe açıklayan mod.
 
 ---
 **Başlangıç:**

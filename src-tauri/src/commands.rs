@@ -77,53 +77,66 @@ fn scan_dir(dir: &Path, files: &mut Vec<String>) {
 }
 #[tauri::command]
 pub async fn get_all_files(path: String) -> Result<Vec<String>, String> {
-    let ignored = vec!["node_modules", ".git", "dist", "build", "target"];
+    use walkdir::WalkDir;
+    
+    let ignored = vec!["node_modules", ".git", "dist", "build", "target", ".next", "venv", ".venv"];
     let mut files = Vec::new();
     
-    fn scan_recursive(dir: &Path, files: &mut Vec<String>, ignored: &[&str]) -> std::io::Result<()> {
-        if let Ok(entries) = fs::read_dir(dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                let path_str = path.to_str().unwrap_or("");
-                
-                // Ignore klasörlerini atla
-                if ignored.iter().any(|i| path_str.contains(i)) {
-                    continue;
-                }
-                
-                if path.is_dir() {
-                    scan_recursive(&path, files, ignored)?;
-                } else if path.is_file() {
-                    if let Some(p) = path.to_str() {
-                        files.push(p.to_string());
-                    }
-                }
+    for entry in WalkDir::new(&path)
+        .into_iter()
+        .filter_entry(|e| {
+            let name = e.file_name().to_str().unwrap_or("");
+            !ignored.contains(&name)
+        })
+        .filter_map(|e| e.ok()) 
+    {
+        if entry.file_type().is_file() {
+            if let Some(p) = entry.path().to_str() {
+                files.push(p.to_string());
             }
         }
-        Ok(())
     }
-    
-    scan_recursive(Path::new(&path), &mut files, &ignored)
-        .map_err(|e| format!("Dosya tarama hatası: {}", e))?;
     
     Ok(files)
 }
 
 #[tauri::command]
 pub async fn read_file_content(path: String) -> Result<String, String> {
-    std::fs::read_to_string(&path)
-        .map_err(|e| format!("Dosya okunamadı: {}", e))
+    use std::io::{BufReader, Read};
+    use std::fs::File;
+
+    let file = File::open(&path).map_err(|e| format!("Dosya açılamadı: {}", e))?;
+    let mut reader = BufReader::with_capacity(64 * 1024, file);
+    let mut content = String::new();
+    
+    reader.read_to_string(&mut content).map_err(|e| format!("Dosya okunamadı: {}", e))?;
+    
+    Ok(content)
 }
 // --------------------
 // DOSYA OKUMA
 // --------------------
 #[tauri::command]
 pub fn read_file(path: String) -> Result<String, String> {
+    use std::io::{BufReader, Read};
+    use std::fs::File;
+
     info!("📖 Dosya okunuyor: {}", path);
-    fs::read_to_string(&path).map_err(|e| {
+    
+    let file = File::open(&path).map_err(|e| {
+        error!("❌ Dosya açma hatası: {}", e);
+        e.to_string()
+    })?;
+    
+    let mut reader = BufReader::with_capacity(64 * 1024, file);
+    let mut content = String::new();
+    
+    reader.read_to_string(&mut content).map_err(|e| {
         error!("❌ Dosya okuma hatası: {}", e);
         e.to_string()
-    })
+    })?;
+    
+    Ok(content)
 }
 
 // --------------------
@@ -454,10 +467,39 @@ pub fn open_terminal(path: Option<String>) -> Result<(), String> {
 // --------------------
 // TERMINAL KOMUT ÇALIŞTIRMA
 // --------------------
+const ALLOWED_COMMAND_LIST: &[&str] = &[
+    "ls", "dir", "pwd", "echo", "cat", "head", "tail",
+    "grep", "find", "npm", "cargo", "python", "git",
+    "node", "tsc", "eslint", "prettier", "mkdir", "cp", "mv", "rm"
+];
+
 #[tauri::command]
 pub fn execute_terminal_command(command: String, path: String) -> Result<serde_json::Value, String> {
     info!("🔧 Komut çalıştırılıyor: {} (dizin: {})", command, path);
     
+    // Command validation
+    let first_word = command.split_whitespace().next().unwrap_or("");
+    let base_cmd = std::path::Path::new(first_word)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(first_word);
+
+    if !ALLOWED_COMMAND_LIST.contains(&base_cmd) {
+        return Err(format!(
+            "Güvenlik: '{}' komutu izin listesinde yok. İzinli komutlar: {}",
+            base_cmd,
+            ALLOWED_COMMAND_LIST.join(", ")
+        ));
+    }
+
+    // Sanitize dangerous characters
+    let dangerous = [";", "&&", "||", "|", "`", "$(", ">", ">>", "<"];
+    for d in &dangerous {
+        if command.contains(d) {
+            return Err(format!("Güvenlik: '{}' karakteri yasak", d));
+        }
+    }
+
     #[cfg(target_os = "windows")]
     {
         let mut cmd = Command::new("cmd");
@@ -485,8 +527,6 @@ pub fn execute_terminal_command(command: String, path: String) -> Result<serde_j
     
     #[cfg(not(target_os = "windows"))]
     {
-        use std::os::unix::process::CommandExt;
-        
         let output = Command::new("sh")
             .arg("-c")
             .arg(&command)
@@ -869,6 +909,26 @@ pub async fn test_project(path: String) -> Result<serde_json::Value, String> {
 // --------------------
 #[tauri::command]
 pub async fn execute_command(command: String, args: Vec<String>, cwd: Option<String>) -> Result<serde_json::Value, String> {
+    // Validate base command
+    let base_cmd = std::path::Path::new(&command)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(&command);
+
+    if !ALLOWED_COMMAND_LIST.contains(&base_cmd) {
+        return Err(format!("Güvenlik: '{}' komutu izin listesinde değil", base_cmd));
+    }
+
+    // Sanitize args
+    let dangerous = [";", "&&", "||", "|", "`", "$("];
+    for arg in &args {
+        for d in &dangerous {
+            if arg.contains(d) {
+                return Err(format!("Güvenlik: argümanda yasaklı karakter: {}", d));
+            }
+        }
+    }
+
     let mut cmd = Command::new(&command);
     cmd.args(&args);
     
@@ -1161,8 +1221,12 @@ pub async fn build_rag_context(
     // Analyze intent
     let intent = pipeline.analyze_intent(&query);
     
-    // Build context
-    let result: Result<(String, Vec<ContextSource>), Box<dyn std::error::Error>> = pipeline.build_context(intent.clone(), &query).await;
+    // Build context with database and embedding
+    let global_db = VECTOR_DB.lock().await;
+    let db = global_db.as_ref().ok_or("VectorDB not initialized")?;
+    let query_embedding = create_embedding_bge(query.clone(), None).await?;
+    
+    let result: Result<(String, Vec<ContextSource>), Box<dyn std::error::Error>> = pipeline.build_context(intent.clone(), &query, db, query_embedding).await;
     let (context, sources) = result.map_err(|e| format!("Context build hatası: {}", e))?;
     
     info!("✅ Context oluşturuldu: {} tokens", RAGPipeline::estimate_tokens(&context));
@@ -1324,4 +1388,22 @@ pub async fn git_blame(
     Ok(blame_output)
 }
 
+/// 🆕 FIX-41: Test AI Provider Connection securely from backend
+#[tauri::command]
+pub async fn test_provider_connection(base_url: String, api_key: String) -> Result<bool, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut request = client.get(format!("{}/models", base_url));
+    if !api_key.is_empty() {
+        request = request.header("Authorization", format!("Bearer {}", api_key));
+    }
+
+    match request.send().await {
+        Ok(resp) => Ok(resp.status().is_success()),
+        Err(_) => Ok(false)
+    }
+}
 

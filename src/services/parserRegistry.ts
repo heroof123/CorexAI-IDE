@@ -35,12 +35,12 @@ export class ParserRegistry {
    */
   registerParser(parser: LanguageParser): void {
     this.parsers.set(parser.language, parser);
-    
+
     // Map extensions to parser
     for (const ext of parser.extensions) {
       this.extensionMap.set(ext, parser);
     }
-    
+
     console.log(`✅ Registered parser: ${parser.language} (${parser.extensions.join(', ')})`);
   }
 
@@ -60,12 +60,12 @@ export class ParserRegistry {
     // Extract extension
     const ext = filePath.split('.').pop() || '';
     const parser = this.getParser(ext);
-    
+
     if (!parser) {
       console.warn(`⚠️ No parser found for extension: ${ext}, using fallback`);
       return this.fallbackParse(filePath);
     }
-    
+
     try {
       return await parser.parse(filePath, content);
     } catch (error) {
@@ -83,6 +83,7 @@ export class ParserRegistry {
       symbols: [],
       imports: [],
       exports: [],
+      linesOfCode: 0,
       complexity: 0,
       dependencies: [],
       dependents: [],
@@ -119,7 +120,7 @@ export class TypeScriptParser implements LanguageParser {
         filePath,
         content,
       });
-      
+
       return analysis;
     } catch (error) {
       console.error('❌ TypeScript parser error:', error);
@@ -143,7 +144,7 @@ export class PythonParser implements LanguageParser {
         filePath,
         content,
       });
-      
+
       return analysis;
     } catch (error) {
       console.error('❌ Python parser error:', error);
@@ -167,7 +168,7 @@ export class RustParser implements LanguageParser {
         filePath,
         content,
       });
-      
+
       return analysis;
     } catch (error) {
       console.error('❌ Rust parser error:', error);
@@ -191,7 +192,7 @@ export class GoParser implements LanguageParser {
         filePath,
         content,
       });
-      
+
       return analysis;
     } catch (error) {
       console.error('❌ Go parser error:', error);

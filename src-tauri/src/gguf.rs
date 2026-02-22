@@ -23,8 +23,8 @@ pub struct LoadedModel {
 }
 
 pub struct GgufState {
-    pub backend: Option<LlamaBackend>,
-    pub models: HashMap<String, LoadedModel>, // Model path -> Model info
+    pub backend: Option<Arc<LlamaBackend>>,
+    pub models: HashMap<String, Arc<LoadedModel>>, // Model path -> Model info
     pub backend_initialized: bool,
 }
 
@@ -76,28 +76,24 @@ pub async fn load_gguf_model(
         }
     }
 
-    let mut state_guard = state.lock().unwrap();
-
     // Initialize backend only once
-    if !state_guard.backend_initialized {
-        info!("🔄 Initializing backend (first time)...");
-        info!("🎮 CUDA support check...");
-        
-        let backend = LlamaBackend::init()
-            .map_err(|e| {
-                error!("❌ Backend init failed: {:?}", e);
-                format!("Backend init failed: {:?}", e)
-            })?;
-        
-        state_guard.backend = Some(backend);
-        state_guard.backend_initialized = true;
-        info!("✅ Backend initialized");
-        info!("✅ CUDA should be available if compiled with cublas feature");
-    } else {
-        info!("✅ Backend already initialized, reusing...");
-    }
-
-    let backend = state_guard.backend.as_ref().unwrap();
+    let backend = {
+        let mut guard = state.lock().unwrap();
+        if !guard.backend_initialized {
+            info!("🔄 Initializing backend (first time)...");
+            let backend = Arc::new(LlamaBackend::init()
+                .map_err(|e| {
+                    error!("❌ Backend init failed: {:?}", e);
+                    format!("Backend init failed: {:?}", e)
+                })?);
+            
+            guard.backend = Some(backend.clone());
+            guard.backend_initialized = true;
+            backend
+        } else {
+            guard.backend.as_ref().unwrap().clone()
+        }
+    };
 
     // GPU layers parametresini ayarla
     // CUDA veya Vulkan yoksa otomatik olarak 0'a düşür
@@ -129,51 +125,37 @@ pub async fn load_gguf_model(
     // Bellek yetersiz ise CPU'ya otomatik fallback yapılır
     
     let mut final_gpu_layers = n_gpu_layers;
-    let model = match LlamaModel::load_from_file(backend, &model_path, &model_params) {
+    let model = match LlamaModel::load_from_file(&backend, &model_path, &model_params) {
         Ok(m) => m,
         Err(e) => {
             error!("❌ GPU yükleme başarısız: {:?}", e);
             
-            let error_msg = format!("{:?}", e);
+            // GPU hatası durumunda CPU fallback yap (FIX-33)
+            warn!("⚠️ GPU yükleme hatası algılandı, CPU fallback deneniyor...");
             
-            // Bellek yetersiz ise CPU'ya fallback yap
-            if error_msg.contains("OutOfMemory") || error_msg.contains("memory") {
-                warn!("⚠️ Bellek yetersiz - CPU moduna geçiliyor (GPU layers = 0)");
+            final_gpu_layers = 0; // CPU'ya geç
+            let cpu_model_params = LlamaModelParams::default()
+                .with_n_gpu_layers(0); // CPU-only
                 
-                final_gpu_layers = 0; // CPU'ya geç
-                let cpu_model_params = LlamaModelParams::default()
-                    .with_n_gpu_layers(0); // CPU-only
-                
-                match LlamaModel::load_from_file(backend, &model_path, &cpu_model_params) {
-                    Ok(m) => {
-                        info!("✅ Model CPU'da başarıyla yüklendi");
-                        m
-                    },
-                    Err(cpu_err) => {
-                        // CPU yükleme de başarısız - tüm hatayı ver
-                        error!("❌ CPU yükleme de başarısız: {:?}", cpu_err);
-                        return Err(format!(
-                            "Model yüklenemedi:\n\
-                            - GPU hatası: {:?}\n\
-                            - CPU hatası: {:?}\n\n\
-                            Lütfen:\n\
-                            1. Model dosyasının geçerli olduğundan emin olun\n\
-                            2. Modeli yeniden indirmeyi deneyin\n\
-                            3. Context length'i azaltmayı deneyin",
-                            e, cpu_err
-                        ));
-                    }
+            match LlamaModel::load_from_file(&backend, &model_path, &cpu_model_params) {
+                Ok(m) => {
+                    info!("✅ Model CPU'da başarıyla yüklendi");
+                    m
+                },
+                Err(cpu_err) => {
+                    // CPU yükleme de başarısız - tüm hatayı ver
+                    error!("❌ CPU yükleme de başarısız: {:?}", cpu_err);
+                    return Err(format!(
+                        "Model yüklenemedi:\n\
+                        - GPU hatası: {:?}\n\
+                        - CPU hatası: {:?}\n\n\
+                        Lütfen:\n\
+                        1. Model dosyasının geçerli olduğundan emin olun\n\
+                        2. Modeli yeniden indirmeyi deneyin\n\
+                        3. Context length'i azaltmayı deneyin",
+                        e, cpu_err
+                    ));
                 }
-            } else {
-                // Bellek dışı hata - tam bilgi ver
-                return Err(format!(
-                    "Model yükleme hatası: {:?}\n\n\
-                    Lütfen:\n\
-                    1. Model dosyasının geçerli olduğundan emin olun\n\
-                    2. Modeli yeniden indirmeyi deneyin\n\
-                    3. Sistem kaynaklarını kontrol edin (RAM/GPU)",
-                    e
-                ));
             }
         }
     };
@@ -191,14 +173,15 @@ pub async fn load_gguf_model(
     }
 
     // Save model to state pool
-    state_guard.models.insert(model_path.clone(), LoadedModel {
+    let mut guard = state.lock().unwrap();
+    guard.models.insert(model_path.clone(), Arc::new(LoadedModel {
         model,
         model_path: model_path.clone(),
         n_ctx,
         n_gpu_layers: final_gpu_layers,
-    });
+    }));
     
-    info!("✅ Model saved to pool! Total models: {}", state_guard.models.len());
+    info!("✅ Model saved to pool! Total models: {}", guard.models.len());
 
     Ok(format!("✅ Model başarıyla yüklendi: {}", model_path))
 }
@@ -215,39 +198,40 @@ pub async fn chat_with_gguf_model(
     info!("📝 Prompt length: {} chars", prompt.len());
     info!("⚙️ Max tokens: {}, Temperature: {}", max_tokens, temperature);
 
-    // 🔧 Mutex poisoned ise düzelt
-    let state_guard = match state.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            warn!("⚠️ Mutex was poisoned, recovering...");
-            poisoned.into_inner()
-        }
+    // 🆕 Get model and backend from pool with minimum lock time
+    let (loaded_model, backend) = {
+        let guard = match state.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        
+        let model = guard.models.get(&model_path)
+            .cloned() // Arc cloing is cheap
+            .ok_or_else(|| format!("Model havuzda bulunamadı: {}", model_path))?;
+            
+        let backend = guard.backend.as_ref()
+            .cloned()
+            .ok_or_else(|| "Backend not initialized".to_string())?;
+            
+        (model, backend)
     };
-    
-    // 🆕 Get model from pool
-    let loaded_model = state_guard.models.get(&model_path)
-        .ok_or_else(|| {
-            error!("❌ Model not found in pool: {}", model_path);
-            format!("Model havuzda bulunamadı: {}", model_path)
-        })?;
 
-    let backend = state_guard.backend.as_ref().unwrap();
     let model = &loaded_model.model;
     let n_ctx = loaded_model.n_ctx;
 
     info!("📦 Using model from pool: {}", model_path);
 
-    // Create context with proper KV cache size
-    // KV cache should be at least n_ctx + max_tokens to avoid NoKvCacheSlot error
-    let kv_cache_size = (n_ctx + max_tokens).max(4096); // Minimum 4096
+    // Create context with proper KV cache size (FIX-31)
+    let kv_cache_size = (n_ctx + max_tokens).max(4096);
+    let n_batch = 2048; // Optimal batch size for modern GPUs
     
-    info!("📊 KV Cache size: {}", kv_cache_size);
+    info!("📊 Context Params: n_ctx={}, n_batch={}", kv_cache_size, n_batch);
     
     let ctx_params = LlamaContextParams::default()
-        .with_n_ctx(std::num::NonZero::new(kv_cache_size)) // Use larger context for KV cache
-        .with_n_batch(8192); // Increase batch size to 8192 (was 512)
+        .with_n_ctx(std::num::NonZeroU32::new(kv_cache_size as u32))
+        .with_n_batch(n_batch as u32);
 
-    let mut context = model.new_context(backend, ctx_params)
+    let mut context = model.new_context(&backend, ctx_params)
         .map_err(|e| {
             error!("❌ Context creation failed: {:?}", e);
             format!("Context creation failed: {:?}", e)
@@ -622,151 +606,164 @@ pub async fn get_gpu_memory_info(
     }))
 }
 
-/// GPU VRAM bilgisini algıla (platform-specific)
+/// GPU VRAM bilgisini algıla (platform-specific) (FIX-27)
 fn detect_gpu_vram() -> f64 {
     // 🎮 NVIDIA GPU - nvidia-smi ile kontrol et
-    if cfg!(target_os = "windows") {
-        if let Ok(output) = std::process::Command::new("nvidia-smi")
-            .args(&["--query-gpu=memory.total", "--format=csv,noheader,nounits"])
-            .output()
-        {
-            if output.status.success() {
-                if let Ok(output_str) = String::from_utf8(output.stdout) {
-                    if let Ok(vram_mb) = output_str.trim().parse::<f64>() {
-                        let vram_gb = vram_mb / 1024.0;
-                        info!("🎮 Detected GPU VRAM: {:.1} GB", vram_gb);
-                        return vram_gb;
-                    }
+    if let Ok(output) = std::process::Command::new("nvidia-smi")
+        .args(&["--query-gpu=memory.total", "--format=csv,noheader,nounits"])
+        .output()
+    {
+        if output.status.success() {
+            if let Ok(output_str) = String::from_utf8(output.stdout) {
+                if let Ok(vram_mb) = output_str.trim().parse::<f64>() {
+                    let vram_gb = vram_mb / 1024.0;
+                    info!("🎮 NVIDIA GPU VRAM algılandı: {:.1} GB", vram_gb);
+                    return vram_gb;
                 }
             }
         }
     }
-    
-    // Varsayılan olarak 12GB döndür (kullanıcı ayarlayabilir)
-    info!("⚠️ GPU VRAM alınamadı, 12GB varsayılan kullanılıyor");
-    12.0
+
+    // 🍎 Apple Silicon - Mac'lerde genelde unified memory var
+    #[cfg(target_os = "macos")]
+    {
+        use sysinfo::{System, SystemExt};
+        let mut sys = System::new_all();
+        sys.refresh_all();
+        let total_ram_gb = sys.total_memory() as f64 / (1024.0 * 1024.0 * 1024.0);
+        info!("🍎 Apple Silicon: Unified Memory {:.1} GB kullanılıyor", total_ram_gb * 0.75);
+        return total_ram_gb * 0.75; // Genelde %75'i GPU'ya ayrılabilir
+    }
+
+    // 🖥️ Fallback: Sistem RAM'inin %50'sini kullan (VRAM yoksa)
+    use sysinfo::System;
+    let mut sys = System::new_all();
+    sys.refresh_all();
+    let total_ram_gb = sys.total_memory() as f64 / (1024.0 * 1024.0 * 1024.0);
+    let fallback_ram = (total_ram_gb * 0.5).max(4.0);
+    info!("⚠️ GPU bulunamadı. Sistem RAM'i yedek olarak kullanılıyor: {:.1} GB", fallback_ram);
+    fallback_ram
 }
 
 // 🆕 GGUF Metadata Okuyucu
+// 🆕 GGUF Metadata Okuyucu - Gerçek Binary Okuma Entegrasyonu
 #[tauri::command]
-pub async fn read_gguf_metadata(
-    model_path: String,
-) -> Result<serde_json::Value, String> {
-    info!("📖 Reading GGUF metadata from: {}", model_path);
-    
-    if !Path::new(&model_path).exists() {
-        error!("❌ Model file not found: {}", model_path);
-        return Err(format!("Model file not found: {}", model_path));
+pub async fn read_gguf_metadata(path: String) -> Result<serde_json::Value, String> {
+    use std::io::{Read, Seek, SeekFrom};
+    use std::fs::File;
+
+    info!("📖 Gerçek GGUF metadata okuma başlatıldı: {}", path);
+
+    let mut file = File::open(&path).map_err(|e| format!("Dosya açılamadı: {}", e))?;
+
+    // GGUF magic: 0x47 0x47 0x55 0x46 ("GGUF")
+    let mut magic = [0u8; 4];
+    file.read_exact(&mut magic).map_err(|e| format!("Magic bytes okunamadı: {}", e))?;
+
+    if &magic != b"GGUF" {
+        return Err("Geçersiz GGUF dosyası (magic bytes yanlış)".to_string());
     }
-    
-    // Dosya boyutunu al
-    let file_size = std::fs::metadata(&model_path)
-        .map_err(|e| format!("Failed to get file size: {}", e))?
-        .len();
-    
-    let file_size_gb = file_size as f64 / (1024.0 * 1024.0 * 1024.0);
-    
-    // Model parametrelerini dosya adından çıkar
-    let file_name = Path::new(&model_path)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("unknown");
-    
-    // Parametre sayısını tahmin et (dosya adından)
-    let parameters = if file_name.contains("3b") || file_name.contains("3B") {
-        "3B"
-    } else if file_name.contains("7b") || file_name.contains("7B") {
-        "7B"
-    } else if file_name.contains("8b") || file_name.contains("8B") {
-        "8B"
-    } else if file_name.contains("13b") || file_name.contains("13B") {
-        "13B"
-    } else if file_name.contains("70b") || file_name.contains("70B") {
-        "70B"
-    } else {
-        "Unknown"
-    };
-    
-    // Quantization'ı dosya adından çıkar
-    let quantization = if file_name.contains("q4_k_m") || file_name.contains("Q4_K_M") {
-        "Q4_K_M"
-    } else if file_name.contains("q5_k_m") || file_name.contains("Q5_K_M") {
-        "Q5_K_M"
-    } else if file_name.contains("q6_k") || file_name.contains("Q6_K") {
-        "Q6_K"
-    } else if file_name.contains("q8") || file_name.contains("Q8") {
-        "Q8_0"
-    } else if file_name.contains("q4") || file_name.contains("Q4") {
-        "Q4_0"
-    } else if file_name.contains("q5") || file_name.contains("Q5") {
-        "Q5_0"
-    } else {
-        "Unknown"
-    };
-    
-    // Model architecture'ı tahmin et
-    let architecture = if file_name.to_lowercase().contains("llama") {
-        "Llama"
-    } else if file_name.to_lowercase().contains("qwen") {
-        "Qwen"
-    } else if file_name.to_lowercase().contains("mistral") {
-        "Mistral"
-    } else if file_name.to_lowercase().contains("phi") {
-        "Phi"
-    } else if file_name.to_lowercase().contains("gemma") {
-        "Gemma"
-    } else {
-        "Unknown"
-    };
-    
-    // Tahmini layer sayısı (parametre sayısına göre)
-    let estimated_layers = match parameters {
-        "3B" => 26,
-        "7B" | "8B" => 32,
-        "13B" => 40,
-        "70B" => 80,
-        _ => 32,
-    };
-    
-    // Tahmini vocab size
-    let estimated_vocab_size = match architecture {
-        "Qwen" => 151936,
-        "Llama" => 32000,
-        "Mistral" => 32000,
-        "Phi" => 51200,
-        "Gemma" => 256000,
-        _ => 32000,
-    };
-    
-    // Tahmini context length (modern modeller genelde 4K-128K arası)
-    let estimated_context = match architecture {
-        "Qwen" => 32768,
-        "Llama" => 8192,
-        "Mistral" => 32768,
-        "Phi" => 4096,
-        "Gemma" => 8192,
-        _ => 4096,
-    };
-    
-    info!("✅ Metadata extracted:");
-    info!("   File Size: {:.2} GB", file_size_gb);
-    info!("   Parameters: {}", parameters);
-    info!("   Quantization: {}", quantization);
-    info!("   Architecture: {}", architecture);
-    info!("   Estimated Layers: {}", estimated_layers);
-    
-    Ok(json!({
-        "file_name": file_name,
-        "file_size_bytes": file_size,
-        "file_size_gb": format!("{:.2}", file_size_gb),
-        "parameters": parameters,
-        "quantization": quantization,
-        "architecture": architecture,
-        "estimated_layers": estimated_layers,
-        "estimated_vocab_size": estimated_vocab_size,
-        "estimated_context_length": estimated_context,
-        "model_type": format!("{} {}", architecture, parameters),
-    }))
+
+    // Version (uint32 LE)
+    let mut version_bytes = [0u8; 4];
+    file.read_exact(&mut version_bytes).map_err(|e| e.to_string())?;
+    let version = u32::from_le_bytes(version_bytes);
+
+    // tensor_count (uint64 LE)
+    let mut tc_bytes = [0u8; 8];
+    file.read_exact(&mut tc_bytes).map_err(|e| e.to_string())?;
+    let tensor_count = u64::from_le_bytes(tc_bytes);
+
+    // metadata_kv_count (uint64 LE)
+    let mut kvc_bytes = [0u8; 8];
+    file.read_exact(&mut kvc_bytes).map_err(|e| e.to_string())?;
+    let kv_count = u64::from_le_bytes(kvc_bytes);
+
+    let mut metadata = serde_json::Map::new();
+    metadata.insert("gguf_version".to_string(), version.into());
+    metadata.insert("tensor_count".to_string(), tensor_count.into());
+    metadata.insert("kv_count".to_string(), kv_count.into());
+
+    // KV çiftlerini oku (ilk 200 tanesi - güvenlik için)
+    for _ in 0..kv_count.min(200) {
+        let key = match read_gguf_string(&mut file) {
+            Ok(k) => k,
+            Err(_) => break,
+        };
+
+        let mut vtype_bytes = [0u8; 4];
+        if file.read_exact(&mut vtype_bytes).is_err() { break; }
+        let vtype = u32::from_le_bytes(vtype_bytes);
+
+        let value = match read_gguf_value(&mut file, vtype) {
+            Ok(v) => v,
+            Err(_) => serde_json::Value::Null,
+        };
+        
+        metadata.insert(key, value);
+    }
+
+    // Dosya boyutunu ekle
+    let file_size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+    metadata.insert("file_size_gb".to_string(), (file_size as f64 / 1_073_741_824.0).into());
+
+    info!("✅ GGUF metadata başarıyla okundu");
+    Ok(serde_json::Value::Object(metadata))
+}
+
+fn read_gguf_string(file: &mut std::fs::File) -> Result<String, String> {
+    use std::io::Read;
+    let mut len_bytes = [0u8; 8];
+    file.read_exact(&mut len_bytes).map_err(|e| e.to_string())?;
+    let len = u64::from_le_bytes(len_bytes) as usize;
+    if len > 4096 { return Err("String çok uzun".to_string()); }
+    let mut buf = vec![0u8; len];
+    file.read_exact(&mut buf).map_err(|e| e.to_string())?;
+    String::from_utf8(buf).map_err(|e| e.to_string())
+}
+
+fn read_gguf_value(file: &mut std::fs::File, vtype: u32) -> Result<serde_json::Value, String> {
+    use std::io::Read;
+    match vtype {
+        0 => { // UINT8
+            let mut b = [0u8; 1]; file.read_exact(&mut b).map_err(|e| e.to_string())?;
+            Ok(b[0].into())
+        }
+        4 => { // UINT32
+            let mut b = [0u8; 4]; file.read_exact(&mut b).map_err(|e| e.to_string())?;
+            Ok(u32::from_le_bytes(b).into())
+        }
+        5 => { // INT32
+            let mut b = [0u8; 4]; file.read_exact(&mut b).map_err(|e| e.to_string())?;
+            Ok(i32::from_le_bytes(b).into())
+        }
+        6 => { // FLOAT32
+            let mut b = [0u8; 4]; file.read_exact(&mut b).map_err(|e| e.to_string())?;
+            Ok(f32::from_le_bytes(b).into())
+        }
+        7 => { // BOOL
+            let mut b = [0u8; 1]; file.read_exact(&mut b).map_err(|e| e.to_string())?;
+            Ok((b[0] != 0).into())
+        }
+        8 => { // STRING
+            Ok(read_gguf_string(file)?.into())
+        }
+        10 => { // UINT64
+            let mut b = [0u8; 8]; file.read_exact(&mut b).map_err(|e| e.to_string())?;
+            Ok(u64::from_le_bytes(b).into())
+        }
+        9 => { // ARRAY
+            let mut type_bytes = [0u8; 4]; 
+            file.read_exact(&mut type_bytes).map_err(|e| e.to_string())?;
+            let _subtype = u32::from_le_bytes(type_bytes);
+            let mut len_bytes = [0u8; 8];
+            file.read_exact(&mut len_bytes).map_err(|e| e.to_string())?;
+            let _len = u64::from_le_bytes(len_bytes);
+            // Dizileri şimdilik pas geçiyoruz (header okumak yetiyor)
+            Ok(serde_json::Value::String("[Array]".to_string()))
+        }
+        _ => Ok(serde_json::Value::Null),
+    }
 }
 
 
@@ -781,23 +778,24 @@ pub async fn chat_with_gguf_vision(
     temperature: f32,
 ) -> Result<String, String> {
     info!("📷 Starting vision inference...");
-    info!("📝 Prompt length: {} chars", prompt.len());
-    info!("🖼️ Images: {}", images.len());
-    info!("⚙️ Max tokens: {}, Temperature: {}", max_tokens, temperature);
-
-    // ⚠️ IMPORTANT: Vision support requires:
-    // 1. Vision-capable GGUF model (LLaVA, Qwen2-VL, Bakllava)
-    // 2. mmproj file (vision projector) - must match the model
-    // 3. llama.cpp compiled with vision support
     
-    // Check if model is loaded (in a separate scope to drop the lock immediately)
-    {
-        let state_guard = state.lock().unwrap();
-        if !state_guard.models.contains_key(&model_path) {
-            error!("❌ Model not found in pool: {}", model_path);
-            return Err(format!("Vision model pool'da bulunamadı: {}", model_path));
-        }
-    } // Lock is dropped here
+    // 🆕 Get model and backend from pool with minimum lock time
+    let (loaded_model, backend) = {
+        let guard = match state.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        
+        let model = guard.models.get(&model_path)
+            .cloned()
+            .ok_or_else(|| format!("Vision model pool'da bulunamadı: {}", model_path))?;
+            
+        let backend = guard.backend.as_ref()
+            .cloned()
+            .ok_or_else(|| "Backend not initialized".to_string())?;
+            
+        (model, backend)
+    };
     
     // Decode base64 images (validation only for now)
     let mut decoded_images = Vec::new();

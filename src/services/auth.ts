@@ -53,23 +53,23 @@ export async function startOAuthFlow(providerId: 'github' | 'microsoft'): Promis
   try {
     // Generate random state for CSRF protection
     const state = generateRandomState();
-    
+
     // Build authorization URL
     const authUrl = buildAuthUrl(provider, state);
-    
+
     // Open browser and wait for callback
     const authCode = await invoke<string>('oauth_authenticate', {
       authUrl,
       callbackUrl: `http://localhost:1420/auth/${providerId}/callback`,
       state
     });
-    
+
     // Exchange code for token
     const tokenData = await exchangeCodeForToken(provider, authCode);
-    
+
     // Get user profile
     const profile = await getUserProfile(provider, tokenData.access_token);
-    
+
     // Save to storage
     const userProfile: UserProfile = {
       id: profile.id,
@@ -81,9 +81,9 @@ export async function startOAuthFlow(providerId: 'github' | 'microsoft'): Promis
       refreshToken: tokenData.refresh_token,
       expiresAt: tokenData.expires_in ? Date.now() + tokenData.expires_in * 1000 : undefined
     };
-    
-    saveUserProfile(userProfile);
-    
+
+    await saveUserProfile(userProfile);
+
     return userProfile;
   } catch (error) {
     console.error('OAuth flow failed:', error);
@@ -102,7 +102,7 @@ function buildAuthUrl(provider: AuthProvider, state: string): string {
     state,
     response_type: 'code'
   });
-  
+
   return `${provider.authUrl}?${params.toString()}`;
 }
 
@@ -119,7 +119,7 @@ async function exchangeCodeForToken(provider: AuthProvider, code: string): Promi
       provider: provider.id,
       redirectUri: `http://localhost:1420/auth/${provider.id}/callback`
     });
-    
+
     return tokenData;
   } catch (error) {
     console.error('Token exchange failed:', error);
@@ -132,24 +132,24 @@ async function exchangeCodeForToken(provider: AuthProvider, code: string): Promi
  */
 async function getUserProfile(provider: AuthProvider, accessToken: string): Promise<any> {
   let apiUrl = '';
-  
+
   if (provider.id === 'github') {
     apiUrl = 'https://api.github.com/user';
   } else if (provider.id === 'microsoft') {
     apiUrl = 'https://graph.microsoft.com/v1.0/me';
   }
-  
+
   const response = await fetch(apiUrl, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
       'Accept': 'application/json'
     }
   });
-  
+
   if (!response.ok) {
     throw new Error('Failed to get user profile');
   }
-  
+
   return response.json();
 }
 
@@ -162,45 +162,47 @@ function generateRandomState(): string {
   return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
+import { storage } from './storage';
+
 /**
- * Save user profile to localStorage
+ * Save user profile to storage
  */
-function saveUserProfile(profile: UserProfile): void {
-  const profiles = getStoredProfiles();
+async function saveUserProfile(profile: UserProfile): Promise<void> {
+  const profiles = await getStoredProfiles();
   const existingIndex = profiles.findIndex(p => p.provider === profile.provider);
-  
+
   if (existingIndex >= 0) {
     profiles[existingIndex] = profile;
   } else {
     profiles.push(profile);
   }
-  
-  localStorage.setItem('user_profiles', JSON.stringify(profiles));
+
+  await storage.setSecure('user_profiles', profiles);
 }
 
 /**
  * Get stored user profiles
  */
-export function getStoredProfiles(): UserProfile[] {
-  const stored = localStorage.getItem('user_profiles');
-  return stored ? JSON.parse(stored) : [];
+export async function getStoredProfiles(): Promise<UserProfile[]> {
+  const stored = await storage.getSecure<UserProfile[]>('user_profiles');
+  return stored || [];
 }
 
 /**
  * Get profile by provider
  */
-export function getProfileByProvider(providerId: 'github' | 'microsoft'): UserProfile | null {
-  const profiles = getStoredProfiles();
+export async function getProfileByProvider(providerId: 'github' | 'microsoft'): Promise<UserProfile | null> {
+  const profiles = await getStoredProfiles();
   return profiles.find(p => p.provider === providerId) || null;
 }
 
 /**
  * Sign out from provider
  */
-export function signOut(providerId: 'github' | 'microsoft'): void {
-  const profiles = getStoredProfiles();
+export async function signOut(providerId: 'github' | 'microsoft'): Promise<void> {
+  const profiles = await getStoredProfiles();
   const filtered = profiles.filter(p => p.provider !== providerId);
-  localStorage.setItem('user_profiles', JSON.stringify(filtered));
+  await storage.setSecure('user_profiles', filtered);
 }
 
 /**
@@ -219,7 +221,7 @@ export async function refreshAccessToken(profile: UserProfile): Promise<UserProf
   if (!profile.refreshToken) {
     throw new Error('No refresh token available');
   }
-  
+
   try {
     // Call Tauri backend command
     const tokenData = await invoke<{
@@ -231,16 +233,16 @@ export async function refreshAccessToken(profile: UserProfile): Promise<UserProf
       refreshToken: profile.refreshToken,
       provider: profile.provider
     });
-    
+
     const updatedProfile: UserProfile = {
       ...profile,
       accessToken: tokenData.access_token,
       refreshToken: tokenData.refresh_token || profile.refreshToken,
       expiresAt: tokenData.expires_in ? Date.now() + tokenData.expires_in * 1000 : undefined
     };
-    
+
     saveUserProfile(updatedProfile);
-    
+
     return updatedProfile;
   } catch (error) {
     console.error('Token refresh failed:', error);

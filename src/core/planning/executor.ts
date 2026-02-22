@@ -26,6 +26,9 @@ export interface RollbackAction {
   description: string;
 }
 
+const EXECUTOR_ALLOWED = ['npm', 'npx', 'cargo', 'python', 'python3', 'node',
+  'tsc', 'git', 'eslint', 'prettier', 'jest', 'vitest', 'mkdir', 'cp', 'mv', 'rm'];
+
 export class TaskExecutor {
   private rollbackStack: RollbackAction[] = [];
   private executionHistory: Map<string, TaskResult> = new Map();
@@ -150,9 +153,9 @@ export class TaskExecutor {
         while (retryCount < maxRetries) {
           retryCount++;
           console.log(`🔄 Retrying task (${retryCount}/${maxRetries}): ${task.description}`);
-          
+
           await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-          
+
           const retryResult = await this.executeTask(task, context);
           results[results.length - 1] = retryResult;
 
@@ -278,6 +281,21 @@ export class TaskExecutor {
       return `[DRY RUN] Would run command: ${task.command}`;
     }
 
+    // Security validation
+    const baseCmd = task.command.split(/[/\\]/).pop() || task.command;
+    if (!EXECUTOR_ALLOWED.includes(baseCmd)) {
+      throw new Error(`Executor: '${baseCmd}' komutu izin listesinde değil. İzinli komutlar: ${EXECUTOR_ALLOWED.join(', ')}`);
+    }
+
+    // Sanitize arguments
+    const dangerous = [';', '&&', '||', '|', '`', '$('];
+    const allArgs = (task.args || []).join(' ');
+    for (const d of dangerous) {
+      if (allArgs.includes(d)) {
+        throw new Error(`Executor: Argümanlarda yasaklı karakter bulundu: ${d}`);
+      }
+    }
+
     const output = await Command.create(task.command, task.args || []).execute();
 
     if (output.code !== 0) {
@@ -299,7 +317,7 @@ export class TaskExecutor {
     }
 
     const { callAI } = await import('../../services/aiProvider');
-    
+
     const response = await callAI(task.query, '', [
       { role: 'user', content: task.query }
     ]);
@@ -319,15 +337,29 @@ export class TaskExecutor {
     }
 
     // Implement validation based on type
+    const workDir = context.workingDirectory;
+
     switch (task.validationType) {
-      case 'syntax':
-        return 'Syntax validation passed';
-      case 'lint':
-        return 'Lint validation passed';
-      case 'test':
-        return 'Tests passed';
-      case 'build':
-        return 'Build successful';
+      case 'syntax': {
+        const out = await Command.create('tsc', ['--noEmit', '--skipLibCheck'], { cwd: workDir }).execute();
+        if (out.code !== 0) throw new Error(`TypeScript hataları:\n${out.stderr}`);
+        return 'TypeScript syntax doğrulaması başarılı';
+      }
+      case 'lint': {
+        const out = await Command.create('npx', ['eslint', task.target || '.', '--max-warnings=0'], { cwd: workDir }).execute();
+        if (out.code !== 0) throw new Error(`ESLint hataları:\n${out.stdout}`);
+        return 'Lint kontrolü başarılı';
+      }
+      case 'test': {
+        const out = await Command.create('npm', ['test', '--', '--passWithNoTests'], { cwd: workDir }).execute();
+        if (out.code !== 0) throw new Error(`Testler başarısız:\n${out.stdout}`);
+        return `Testler başarıyla tamamlandı:\n${out.stdout.slice(0, 500)}`;
+      }
+      case 'build': {
+        const out = await Command.create('npm', ['run', 'build'], { cwd: workDir }).execute();
+        if (out.code !== 0) throw new Error(`Build hatası:\n${out.stderr}`);
+        return 'Proje başarıyla build edildi';
+      }
       default:
         throw new Error(`Unknown validation type: ${task.validationType}`);
     }

@@ -101,33 +101,62 @@ impl RAGPipeline {
         String::new()
     }
     
-    /// Build context from multiple sources
+    /// Build context from multiple sources (Vector DB integration)
     pub async fn build_context(
         &self,
         intent: QueryIntent,
-        query: &str,
+        _query: &str,
+        vector_db: &crate::vector_db::VectorDB,
+        query_embedding: Vec<f32>,
     ) -> Result<(String, Vec<ContextSource>), Box<dyn Error>> {
         let mut context = String::new();
-        let sources: Vec<ContextSource> = Vec::new();
+        let mut sources: Vec<ContextSource> = Vec::new();
         
-        // Reserve tokens for system prompt and query
-        let available_tokens = self.max_context_tokens.saturating_sub(30_000); // Reserve 30k for system + query
+        // 1. Vector DB'den ilgili code chunk'ları çek
+        let top_k = match &intent {
+            QueryIntent::Refactor { .. } | QueryIntent::Debug { .. } => 8,
+            QueryIntent::Explain { .. } => 5,
+            _ => 3,
+        };
+
+        let chunks = vector_db.query(query_embedding, top_k).await.unwrap_or_default();
+
+        if !chunks.is_empty() {
+            context.push_str("=== İLGİLİ KOD PARÇALARI (Vector DB) ===\n\n");
+            for chunk in &chunks {
+                context.push_str(&format!(
+                    "--- {} ({}) ---\n{}\n\n",
+                    chunk.file_path,
+                    chunk.chunk_type,
+                    chunk.content
+                ));
+
+                sources.push(ContextSource {
+                    source_type: "vector_db".to_string(),
+                    file_path: chunk.file_path.clone(),
+                    relevance_score: 0.9, 
+                    reason: format!("Vector benzerliği: {}", chunk.chunk_type),
+                });
+            }
+        }
+
+        // 2. Intent'e göre ek bağlam
+        match &intent {
+            QueryIntent::Debug { file } if !file.is_empty() => {
+                context.push_str(&format!("\n=== HEDEF ANALİZ DOSYASI: {} ===\n", file));
+            }
+            QueryIntent::Refactor { symbol } | QueryIntent::Explain { symbol }
+                if !symbol.is_empty() => {
+                context.push_str(&format!("\n=== HEDEF SEMBOL: {} ===\n", symbol));
+            }
+            _ => {}
+        }
         
-        // TODO: Implement actual multi-source retrieval
-        // For now, return placeholder
-        
-        context.push_str("=== CONTEXT ===\n\n");
-        context.push_str(&format!("Query: {}\n", query));
-        context.push_str(&format!("Intent: {:?}\n\n", intent));
-        
-        // Estimate tokens (rough: 1 token ≈ 4 characters)
-        let token_count = context.len() / 4;
-        
-        if token_count > available_tokens {
-            // Truncate if needed
-            let max_chars = available_tokens * 4;
-            context.truncate(max_chars);
-            context.push_str("\n\n[Context truncated due to token limit]");
+        // Token limiti kontrolü
+        let available = self.max_context_tokens.saturating_sub(5000); // 5K reserve
+        if context.len() / 4 > available {
+            context.truncate(available * 4);
+            context.push_str("\n\n[Bağlam token limitinden dolayı kısaltıldı]");
         }
         
         Ok((context, sources))

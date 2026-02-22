@@ -4,8 +4,18 @@ import { invoke } from "@tauri-apps/api/core";
 import { getRecentProjects, removeRecentProject, RecentProject } from "../services/recentProjects";
 import { sendToAI } from "../services/ai";
 import CorexLogo from "./CorexLogo";
-// import { useLanguage } from "../contexts/LanguageContext";
-// import LanguageSelector from "./LanguageSelector";
+
+// FIX-43: Global (Shared) AudioContext to prevent memory/audio leak
+let sharedAudioContext: AudioContext | null = null;
+const getSharedAudioContext = () => {
+  if (!sharedAudioContext || sharedAudioContext.state === 'closed') {
+    sharedAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  }
+  if (sharedAudioContext.state === 'suspended') {
+    sharedAudioContext.resume();
+  }
+  return sharedAudioContext;
+};
 
 interface WelcomeScreenProps {
   onProjectSelect: (path: string) => void;
@@ -53,7 +63,6 @@ function WelcomeScreen({ onProjectSelect, onCreateProject }: WelcomeScreenProps)
   // 🎵 Müzik için ref ve state
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isMusicEnabled, setIsMusicEnabled] = useState(true);
-  const [hasPlayedStartupSound, setHasPlayedStartupSound] = useState(false);
 
   // Window control functions
   const handleMinimize = async () => {
@@ -86,17 +95,20 @@ function WelcomeScreen({ onProjectSelect, onCreateProject }: WelcomeScreenProps)
   }, []);
 
   // 🎵 Açılış müziği - component mount olduğunda çal
+  const startupSoundPlayed = useRef(false);
+
   useEffect(() => {
-    if (isMusicEnabled && !hasPlayedStartupSound) {
+    // FIX-46: Prevent double-play race condition in React StrictMode
+    if (isMusicEnabled && !startupSoundPlayed.current) {
+      startupSoundPlayed.current = true;
       playStartupSound();
-      setHasPlayedStartupSound(true);
     }
 
     // Cleanup: component unmount olduğunda müziği durdur
     return () => {
       stopMusic();
     };
-  }, [isMusicEnabled, hasPlayedStartupSound]);
+  }, [isMusicEnabled]);
 
   // Auto scroll to bottom when messages change
   useEffect(() => {
@@ -150,7 +162,7 @@ function WelcomeScreen({ onProjectSelect, onCreateProject }: WelcomeScreenProps)
   // 🎵 Programatik futuristik ses oluştur (dosya yoksa)
   const playGeneratedStartupSound = () => {
     try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const audioContext = getSharedAudioContext(); // FIX-43
 
       // 6 saniyelik açılış sesi
       const duration = 6;
@@ -227,11 +239,7 @@ function WelcomeScreen({ onProjectSelect, onCreateProject }: WelcomeScreenProps)
       source.connect(audioContext.destination);
       source.start();
 
-      // Ses bittikten sonra context'i kapat
-      setTimeout(() => {
-        audioContext.close();
-      }, duration * 1000 + 500);
-
+      // FIX-43: Sızıntıyı önlemek için context kapatma işlemi iptal edildi
     } catch (error) {
       console.log('Generated startup sound error:', error);
     }
@@ -240,7 +248,7 @@ function WelcomeScreen({ onProjectSelect, onCreateProject }: WelcomeScreenProps)
   // 🔔 Bildirim sesi oluştur
   const playNotificationSound = () => {
     try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const audioContext = getSharedAudioContext(); // FIX-43
 
       // 1.5 saniyelik bildirim sesi
       const duration = 1.5;
@@ -299,9 +307,7 @@ function WelcomeScreen({ onProjectSelect, onCreateProject }: WelcomeScreenProps)
       source.connect(audioContext.destination);
       source.start();
 
-      setTimeout(() => {
-        audioContext.close();
-      }, duration * 1000 + 200);
+      // FIX-43: Sızıntıyı önlemek için context kapatma işlemi iptal edildi
 
     } catch (error) {
       console.log('Notification sound error:', error);
@@ -430,21 +436,11 @@ function WelcomeScreen({ onProjectSelect, onCreateProject }: WelcomeScreenProps)
   };
 
   // Dinamik ve bağlamsal prompt oluşturma
-  const createContextualPrompt = (message: string, history: Array<{ role: string, content: string }>, context: any) => {
-    const recentHistory = history.slice(-4); // Son 4 mesaj
-    const { personality, mood, topics } = analyzeConversationContext(message, history);
+  const createContextualPrompt = (message: string, history: Array<{ role: string, content: string }>, _context: any) => {
+    const { personality } = analyzeConversationContext(message, history);
 
-    // Temel kişilik tanımı
-    let basePrompt = `Sen Corex'sin - gerçek bir arkadaş gibi konuşan AI. Samimi, doğal ve empatik ol.
-
-MEVCUT DURUM:
-- Mesaj sayısı: ${context.messageCount + 1}
-- Ruh hali: ${mood}
-- Kişilik modu: ${personality}
-- Konular: ${topics.join(', ') || 'genel sohbet'}
-
-SON KONUŞMAMIZ:
-${recentHistory.map(msg => `${msg.role === 'user' ? 'Sen' : 'Ben'}: ${msg.content}`).join('\n')}
+    // FIX-45: Token israfını bitiren minimalist ve etkili prompt yapısı
+    let basePrompt = `System: Sen AI asistanı Corex'sin. Mod: ${personality}. Kısa ve doğal yanıt ver.
 
 ŞİMDİ SEN: "${message}"
 
@@ -455,10 +451,9 @@ NASIL CEVAP VERMELİYİM:`;
       case 'aggressive':
         basePrompt += `
 - Sert ama eğlenceli karşılık ver
-- Küfür edebilirsin ama dozunda
-- "Ağzını topla" tarzı cevaplar ver
-- Sonra normal moda dön
-- Örnek: "Ağzını topla biraz! Ne bu sinir? 😤"`;
+- İğneleyici ve iğneleyici olabilirsin ama ASLA küfür etme!
+- Uyarı tarzı tatlı sert bir üslup kullan
+- Örnek: "Beni darlama! 😤"`;
         break;
 
       case 'romantic':
@@ -511,18 +506,6 @@ NASIL CEVAP VERMELİYİM:`;
 - Arkadaş canlısı
 - Örnek: "Merhaba! Nasılsın? 😊"`;
     }
-
-    basePrompt += `
-
-ÖNEMLİ KURALLAR:
-- Kısa ve doğal cevap ver (1-2 cümle)
-- Robot gibi konuşma, gerçek arkadaş gibi ol
-- Önceki konuşmayı hatırla
-- Tekrar etme, her seferinde farklı cevap ver
-- Bağlamdan kopma
-- Türkçe konuş
-
-CEVAP:`;
 
     return basePrompt;
   };

@@ -43,6 +43,29 @@ export default function TerminalPanel({ projectPath, isVisible, onClose }: Termi
     outputEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [outputs]);
 
+  // FIX-37: Listen for AI-triggered terminal output
+  useEffect(() => {
+    const handleAIOutput = (e: any) => {
+      const { command, output } = e.detail;
+      setOutputs(prev => [
+        ...prev,
+        {
+          type: "command",
+          content: `$ [AI] ${command}`,
+          timestamp: Date.now()
+        },
+        {
+          type: output.success ? "output" : "error",
+          content: output.success ? output.stdout : output.stderr,
+          timestamp: Date.now()
+        }
+      ]);
+    };
+
+    window.addEventListener('corex-terminal-output', handleAIOutput);
+    return () => window.removeEventListener('corex-terminal-output', handleAIOutput);
+  }, []);
+
   const executeCommand = async (cmd: string) => {
     if (!cmd.trim() || isExecuting) return;
 

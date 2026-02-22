@@ -28,7 +28,14 @@ function convertToAINative(analysis: FileAnalysis): AINativeFileAnalysis {
       is_exported: s.isExported,
     })),
     imports: analysis.imports.map(i => i.moduleName),
+    importsDetail: analysis.imports.map(i => ({
+      moduleName: i.moduleName,
+      importedSymbols: i.importedSymbols || [],
+      isDefault: i.isDefault || false,
+      line: i.line || 0,
+    })),
     exports: analysis.exports.map(e => e.symbolName),
+    linesOfCode: analysis.linesOfCode || 0,
     complexity: analysis.complexity,
     dependencies: analysis.dependencies,
     dependents: analysis.dependents,
@@ -50,12 +57,19 @@ function convertFromAINative(analysis: AINativeFileAnalysis): FileAnalysis {
       isExported: s.is_exported,
       dependencies: [],
     })),
-    imports: analysis.imports.map((moduleName, index) => ({
-      moduleName,
-      importedSymbols: [],
-      isDefault: false,
-      line: index,
-    })),
+    imports: analysis.importsDetail
+      ? analysis.importsDetail.map(i => ({
+        moduleName: i.moduleName,
+        importedSymbols: i.importedSymbols,
+        isDefault: i.isDefault,
+        line: i.line,
+      }))
+      : analysis.imports.map((moduleName, index) => ({
+        moduleName,
+        importedSymbols: [],
+        isDefault: false,
+        line: index,
+      })),
     exports: analysis.exports.map((symbolName, index) => ({
       symbolName,
       isDefault: false,
@@ -64,7 +78,7 @@ function convertFromAINative(analysis: AINativeFileAnalysis): FileAnalysis {
     complexity: analysis.complexity,
     dependencies: analysis.dependencies,
     dependents: analysis.dependents,
-    linesOfCode: 0,
+    linesOfCode: analysis.linesOfCode || 0,
   };
 }
 
@@ -289,12 +303,19 @@ export async function saveCodeInsight(insight: CodeInsight): Promise<void> {
 export async function saveCodeInsights(_filePath: string, insights: CodeInsight[]): Promise<void> {
   const db = await initAINativeDB();
   const tx = db.transaction('code_insights', 'readwrite');
-  
+
   for (const insight of insights) {
     await tx.store.put(insight);
   }
-  
+
   await tx.done;
+
+  // FIX-35: Auto-expiry old insights (3 days)
+  try {
+    await clearOldInsights(3 * 24 * 60 * 60 * 1000);
+  } catch (err) {
+    console.warn("⚠️ Failed to prune old insights:", err);
+  }
 }
 
 export async function getCodeInsights(filePath: string): Promise<CodeInsight[]> {
@@ -313,9 +334,12 @@ export async function deleteCodeInsight(insightId: string): Promise<void> {
   await db.delete('code_insights', insightId);
 }
 
-export async function deleteCodeInsights(insightId: string): Promise<void> {
+// Multi-delete support (FIX-23)
+export async function deleteCodeInsights(insightIds: string[]): Promise<void> {
   const db = await initAINativeDB();
-  await db.delete('code_insights', insightId);
+  const tx = db.transaction('code_insights', 'readwrite');
+  await Promise.all(insightIds.map(id => tx.store.delete(id)));
+  await tx.done;
 }
 
 export async function clearOldInsights(maxAge: number = 7 * 24 * 60 * 60 * 1000): Promise<void> {
@@ -323,13 +347,13 @@ export async function clearOldInsights(maxAge: number = 7 * 24 * 60 * 60 * 1000)
   const cutoff = Date.now() - maxAge;
   const tx = db.transaction('code_insights', 'readwrite');
   const index = tx.store.index('by-timestamp');
-  
+
   let cursor = await index.openCursor(IDBKeyRange.upperBound(cutoff));
   while (cursor) {
     await cursor.delete();
     cursor = await cursor.continue();
   }
-  
+
   await tx.done;
 }
 
@@ -404,29 +428,14 @@ export async function clearAllAINativeData(): Promise<void> {
   console.log('🗑️ All AI-Native data cleared');
 }
 
-export async function getAINativeStorageSize(): Promise<{
-  file_analysis: number;
-  symbol_index: number;
-  dependency_graph: number;
-  code_insights: number;
-  file_history: number;
-  symbol_history: number;
-}> {
+export async function getAINativeStorageSize(): Promise<Record<string, number>> {
   const db = await initAINativeDB();
-  
-  const fileAnalysis = await db.getAll('file_analysis');
-  const symbolIndex = await db.getAll('symbol_index');
-  const dependencyGraph = await db.getAll('dependency_graph');
-  const codeInsights = await db.getAll('code_insights');
-  const fileHistory = await db.getAll('file_history');
-  const symbolHistory = await db.getAll('symbol_history');
-  
-  return {
-    file_analysis: JSON.stringify(fileAnalysis).length,
-    symbol_index: JSON.stringify(symbolIndex).length,
-    dependency_graph: JSON.stringify(dependencyGraph).length,
-    code_insights: JSON.stringify(codeInsights).length,
-    file_history: JSON.stringify(fileHistory).length,
-    symbol_history: JSON.stringify(symbolHistory).length,
-  };
+  const stores = ['file_analysis', 'symbol_index', 'dependency_graph', 'code_insights', 'file_history', 'symbol_history', 'dismissed_insights'];
+  const result: Record<string, number> = {};
+
+  for (const store of stores) {
+    result[store] = await db.count(store as any);
+  }
+
+  return result;
 }

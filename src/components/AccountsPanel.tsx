@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { 
-  startOAuthFlow, 
-  getStoredProfiles, 
-  signOut, 
+import {
+  startOAuthFlow,
+  getStoredProfiles,
+  signOut,
   isTokenExpired,
   refreshAccessToken,
-  type UserProfile 
+  type UserProfile
 } from '../services/auth';
 
 export default function AccountsPanel() {
@@ -19,8 +19,8 @@ export default function AccountsPanel() {
     loadProfiles();
   }, []);
 
-  const loadProfiles = () => {
-    const stored = getStoredProfiles();
+  const loadProfiles = async () => {
+    const stored = await getStoredProfiles();
     setProfiles(stored);
   };
 
@@ -40,10 +40,10 @@ export default function AccountsPanel() {
     }
   };
 
-  const handleSignOut = (provider: 'github' | 'microsoft') => {
+  const handleSignOut = async (provider: 'github' | 'microsoft') => {
     if (confirm(`Sign out from ${provider}?`)) {
-      signOut(provider);
-      loadProfiles();
+      await signOut(provider);
+      await loadProfiles();
     }
   };
 
@@ -62,13 +62,13 @@ export default function AccountsPanel() {
     return profiles.find(p => p.provider === provider);
   };
 
-  const AccountCard = ({ 
-    provider, 
-    name, 
-    description, 
-    icon, 
-    color 
-  }: { 
+  const AccountCard = ({
+    provider,
+    name,
+    description,
+    icon,
+    color
+  }: {
     provider: 'github' | 'microsoft';
     name: string;
     description: string;
@@ -81,7 +81,7 @@ export default function AccountsPanel() {
     return (
       <div className="p-4 border border-[var(--color-border)] rounded-lg">
         <div className="flex items-center gap-3 mb-3">
-          <div 
+          <div
             className={`w-12 h-12 ${color} rounded-full flex items-center justify-center text-white font-semibold text-xl`}
           >
             {icon}
@@ -97,8 +97,8 @@ export default function AccountsPanel() {
             {/* User Info */}
             <div className="flex items-center gap-3 p-3 bg-[var(--color-background)] rounded">
               {profile.avatar && (
-                <img 
-                  src={profile.avatar} 
+                <img
+                  src={profile.avatar}
                   alt={profile.username}
                   className="w-10 h-10 rounded-full"
                 />

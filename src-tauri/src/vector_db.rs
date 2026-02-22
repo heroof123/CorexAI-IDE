@@ -125,39 +125,34 @@ impl VectorDB {
     
     /// Insert or update code chunks in the vector database
     pub async fn upsert(&self, chunks: Vec<CodeChunk>) -> Result<(), Box<dyn Error>> {
-        if chunks.is_empty() {
+        // Filter out empty or too small chunks (FIX-41)
+        let valid_chunks: Vec<CodeChunk> = chunks.into_iter()
+            .filter(|c| c.content.trim().len() > 10)
+            .collect();
+
+        if valid_chunks.is_empty() {
             return Ok(());
         }
         
         let conn = self.connection.lock().await;
-        
-        // Convert chunks to RecordBatch
-        let batch = CodeChunk::to_record_batch(chunks.clone())?;
-        let schema = batch.schema();
-        
-        // Create iterator
-        let batches = vec![Ok(batch)];
-        let reader = RecordBatchIterator::new(batches.into_iter(), schema);
-        
-        // Try to open table, or create if it doesn't exist
-        let table = match conn.open_table(&self.table_name).execute().await {
-            Ok(table) => table,
-            Err(_) => {
-                // Create new table
-                conn.create_table(&self.table_name, Box::new(reader))
-                    .execute()
-                    .await?
-            }
-        };
-        
-        // For existing table, add new data
-        if conn.open_table(&self.table_name).execute().await.is_ok() {
-            let batch2 = CodeChunk::to_record_batch(chunks)?;
-            let schema2 = batch2.schema();
-            let batches2 = vec![Ok(batch2)];
-            let reader2 = RecordBatchIterator::new(batches2.into_iter(), schema2);
+
+        // Split into batches of 1000 to prevent memory issues and improve write performance (FIX-26)
+        for chunk_slice in valid_chunks.chunks(1000) {
+            let batch_data = chunk_slice.to_vec();
+            let batch = CodeChunk::to_record_batch(batch_data)?;
+            let schema = batch.schema();
+            let reader = RecordBatchIterator::new(vec![Ok(batch)].into_iter(), schema);
             
-            table.add(Box::new(reader2)).execute().await?;
+            match conn.open_table(&self.table_name).execute().await {
+                Ok(table) => {
+                    table.add(Box::new(reader)).execute().await?;
+                }
+                Err(_) => {
+                    conn.create_table(&self.table_name, Box::new(reader))
+                        .execute()
+                        .await?;
+                }
+            }
         }
         
         Ok(())
@@ -187,7 +182,16 @@ impl VectorDB {
             let chunk_types = batch.column_by_name("chunk_type").and_then(|c| c.as_any().downcast_ref::<StringArray>()).ok_or_else(|| "Chunk type column not found".to_string())?;
             let timestamps = batch.column_by_name("timestamp").and_then(|c| c.as_any().downcast_ref::<UInt64Array>()).ok_or_else(|| "Timestamp column not found".to_string())?;
             
+            // Extract _distance column (added by LanceDB during vector search)
+            let distances = batch.column_by_name("_distance")
+                .and_then(|c| c.as_any().downcast_ref::<Float32Array>());
+
             for i in 0..batch.num_rows() {
+                // Filter by distance (threshold = 0.7) (FIX-30)
+                if let Some(dist_array) = distances {
+                    if dist_array.value(i) > 0.7 { continue; }
+                }
+
                 let embedding_list = embeddings.value(i);
                 let embedding_data = embedding_list.as_any().downcast_ref::<Float32Array>().ok_or_else(|| "Embedding values not found".to_string())?;
                 let embedding_vec: Vec<f32> = (0..embedding_data.len()).map(|j| embedding_data.value(j)).collect();
@@ -211,8 +215,16 @@ impl VectorDB {
     pub async fn delete_file(&self, file_path: &str) -> Result<(), Box<dyn Error>> {
         let table = self.get_table().await?;
         
+        // SQL string escape: double quotes for single quotes
+        let safe_path = file_path.replace('\'', "''");
+        
+        // Block dangerous chars
+        if file_path.contains(';') || file_path.contains("--") {
+            return Err(format!("Geçersiz dosya yolu: {}", file_path).into());
+        }
+        
         table
-            .delete(&format!("file_path = '{}'", file_path))
+            .delete(&format!("file_path = '{}'", safe_path))
             .await?;
         
         Ok(())
