@@ -401,13 +401,20 @@ export default function GGUFModelBrowser({ onModelSelect }: GGUFModelBrowserProp
             if (!filesResponse.ok) continue;
 
             const files = await filesResponse.json();
-            const ggufFiles = files.filter((f: any) => f.path && f.path.endsWith('.gguf'));
+            // 🚫 -of- içeren parçalı modelleri (split gguf) filtrele
+            const ggufFiles = files.filter((f: any) => f.path && f.path.endsWith('.gguf') && !f.path.includes('-of-'));
 
-            console.log(`${model.id}: ${ggufFiles.length} GGUF dosyası bulundu`);
+            console.log(`${model.id}: ${ggufFiles.length} GGUF dosyası bulundu (Parçalılar hariç)`);
 
-            // Sadece ilk GGUF dosyasını al (genelde en popüler quantization)
+            // 🎯 Öncelikli olarak Q4_K_M veya Q5_K_M olanı bul
             if (ggufFiles.length > 0) {
-              const file = ggufFiles[0]; // İlk dosya
+              const file = ggufFiles.find((f: any) => f.path.toLowerCase().includes('q4_k_m'))
+                || ggufFiles.find((f: any) => f.path.toLowerCase().includes('q5_k_m'))
+                || ggufFiles.find((f: any) => f.path.toLowerCase().includes('q4_0'))
+                || ggufFiles.find((f: any) => f.path.toLowerCase().includes('q8_0'))
+                || ggufFiles.find((f: any) => f.path.toLowerCase().includes('q6_k'))
+                || ggufFiles[0];
+
               const fileName = file.path;
               const sizeBytes = file.size || 0;
               const sizeGB = (sizeBytes / (1024 ** 3)).toFixed(1);
