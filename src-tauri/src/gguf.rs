@@ -345,14 +345,47 @@ pub async fn chat_with_gguf_model(
         // Get candidates
         let candidates = context.candidates();
         
-        // 🆕 Basit sampling - sadece temperature uygula
+        // 🆕 Repetition Penalty ve Temperature Sampling
         let candidates_vec: Vec<_> = candidates.into_iter().collect();
+        
+        // 🔄 Repetition Penalty Uygulama
+        let repeat_penalty = 1.15_f32;
+        let penalty_last_n = 64; 
+        
+        let mut recent_tokens = Vec::new();
+        let total_recent = tokens.len() + response_tokens.len();
+        let start_idx = if total_recent > penalty_last_n { total_recent - penalty_last_n } else { 0 };
+        
+        if tokens.len() > start_idx {
+            recent_tokens.extend_from_slice(&tokens[start_idx..]);
+            recent_tokens.extend_from_slice(&response_tokens);
+        } else {
+            let resp_start = start_idx - tokens.len();
+            recent_tokens.extend_from_slice(&response_tokens[resp_start..]);
+        }
+        
+        let adjusted_logits: Vec<(llama_cpp_2::token::LlamaToken, f32)> = candidates_vec.iter()
+            .map(|c| {
+                let id = c.id();
+                let mut logit = c.logit();
+                
+                if recent_tokens.contains(&id) {
+                    if logit <= 0.0 {
+                        logit *= repeat_penalty;
+                    } else {
+                        logit /= repeat_penalty;
+                    }
+                }
+                
+                (id, logit)
+            })
+            .collect();
         
         // Temperature-based sampling
         let new_token_id = if temperature > 0.0 && temperature != 1.0 {
             // Apply temperature scaling to logits
-            let scaled_logits: Vec<_> = candidates_vec.iter()
-                .map(|c| (c.id(), c.logit() / temperature))
+            let scaled_logits: Vec<_> = adjusted_logits.iter()
+                .map(|(id, logit)| (*id, logit / temperature))
                 .collect();
             
             // Convert to probabilities using softmax
@@ -384,9 +417,9 @@ pub async fn chat_with_gguf_model(
             selected_id
         } else {
             // No temperature, just pick highest probability
-            candidates_vec.iter()
-                .max_by(|a, b| a.logit().partial_cmp(&b.logit()).unwrap_or(std::cmp::Ordering::Equal))
-                .map(|c| c.id())
+            adjusted_logits.into_iter()
+                .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+                .map(|(id, _)| id)
                 .unwrap_or(candidates_vec[0].id())
         };
 
