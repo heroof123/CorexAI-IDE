@@ -1062,6 +1062,7 @@ function AppContent() {
                   <ChatPanel
                     messages={chat.messages}
                     isLoading={chat.isLoading}
+                    isStreaming={chat.isLoading}
                     onSendMessage={chat.sendMessage}
                     pendingActions={chat.pendingActions}
                     onAcceptAction={async actionId => {
@@ -1162,7 +1163,6 @@ function AppContent() {
                     projectContext={chat.getProjectContext()}
                     onStopGeneration={chat.handleStopGeneration}
                     onRegenerateResponse={chat.handleRegenerateResponse}
-                    isStreaming={isCoreStreaming}
                   />
                 </div>
               </div>
