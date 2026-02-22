@@ -1407,3 +1407,29 @@ pub async fn test_provider_connection(base_url: String, api_key: String) -> Resu
     }
 }
 
+/// 🆕 PLUGIN SYSTEM (BETA): List installed plugins
+#[tauri::command]
+pub async fn list_plugins(app_handle: AppHandle) -> Result<Vec<String>, String> {
+    let app_dir = app_handle.path().app_data_dir().map_err(|e| e.to_string())?;
+    let plugins_dir = app_dir.join("plugins");
+
+    // Ensure directory exists
+    if !plugins_dir.exists() {
+        fs::create_dir_all(&plugins_dir).map_err(|e| e.to_string())?;
+    }
+
+    let mut plugin_paths = Vec::new();
+    if let Ok(entries) = fs::read_dir(plugins_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() && path.join("plugin.json").exists() {
+                if let Some(path_str) = path.to_str() {
+                    plugin_paths.push(path_str.to_string());
+                }
+            }
+        }
+    }
+
+    Ok(plugin_paths)
+}
+

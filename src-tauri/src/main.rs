@@ -37,6 +37,7 @@ use commands::{
     // Vector DB commands
     init_vector_db,
     invalidate_file_cache,
+    list_plugins,
     maximize_window,
     minimize_window,
     open_terminal,
@@ -163,6 +164,8 @@ pub fn run() {
             list_mcp_servers,
             // Window management
             window_manager::open_new_window,
+            // Plugin System Beta
+            list_plugins,
         ])
         .on_window_event(move |_window, event| {
             if let tauri::WindowEvent::Destroyed = event {

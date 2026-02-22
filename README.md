@@ -358,20 +358,20 @@ MIT License - see [LICENSE](LICENSE) file
 
 ## 🗺️ Roadmap
 
-### v0.2.0 (Current Version)
+### v0.2.x
 - [x] Professional Light Theme implementation
 - [x] Visual Project Graph visualization
-- [x] Enhanced GGUF Model Browser with HF Search
+- [x] Enhanced GGUF Model Browser & Context Fixes
 - [x] AI Knowledge Base (.corexrules support)
-- [x] Cursor-Aware Context enrichment
-- [ ] Plugin system
-- [ ] Automated Test generation
+- [x] Plugin system (Beta)
+- [x] Automated Test generation & execution
+- [ ] MCP (Model Context Protocol) Integration
 
 ### v0.3.0
-- [ ] Remote development
+- [ ] Remote development (SSH/Docker)
 - [ ] Collaborative editing
-- [ ] Enhanced Git features
-- [ ] Custom themes marketplace
+- [ ] Enhanced Git features (AI Conflict Resolution)
+- [ ] Custom themes marketplace (Marketplace UI)
 
 ### v1.0.0
 - [ ] Stable API

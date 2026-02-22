@@ -5,6 +5,7 @@ import { backgroundReasoner } from './backgroundReasoner';
 import { symbolSearch } from './symbolSearch';
 import { impactAnalysis } from './impactAnalysis';
 import { testWriterAgent } from './testAgent';
+import { pluginService } from './pluginService';
 import { invoke } from '@tauri-apps/api/core';
 
 /**
@@ -67,6 +68,10 @@ export async function initializeServices(_projectPath: string): Promise<void> {
     // Initialize impact analysis
     await impactAnalysis.initialize();
     console.log('✅ ImpactAnalysis initialized');
+
+    // Load Plugins
+    await pluginService.loadPlugins();
+    console.log('🔌 Plugin system (Beta) started');
 
     isInitialized = true;
     console.log('🎉 All AI-native IDE services initialized successfully');

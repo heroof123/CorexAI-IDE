@@ -212,6 +212,26 @@ function AppContent() {
     };
   }, []);
 
+  // 🎨 Plugin-driven Theming Engine
+  useEffect(() => {
+    const handleRegisterTheme = (e: any) => {
+      const theme = e.detail;
+      if (theme && theme.colors) {
+        console.log(`🎨 Applying plugin theme: ${theme.name} `);
+        const root = document.documentElement;
+        Object.entries(theme.colors).forEach(([key, value]) => {
+          root.style.setProperty(key as string, value as string);
+        });
+
+        // Optionally update a "Plugin Themes" state if we had a selector
+        notify("success", "Tema Değişti", `${theme.name} teması uygulandı.`);
+      }
+    };
+
+    window.addEventListener('corex:register-theme', handleRegisterTheme);
+    return () => window.removeEventListener('corex:register-theme', handleRegisterTheme);
+  }, []);
+
   // ── Keyboard Shortcuts ───────────────────────────────────────────────────
   const shortcuts = [
     createShortcut("s", editor.saveFile, "Dosya Kaydet", { ctrl: true }),
@@ -535,6 +555,40 @@ function AppContent() {
       icon: "🔍",
       shortcut: "Ctrl+Shift+V",
       action: () => ui.setShowCodeReview(true),
+    },
+    {
+      id: "generate-tests",
+      title: "AI: Generate Tests",
+      description: "Aktif dosya için otomatik unit testleri oluştur",
+      category: "AI",
+      icon: "🧪",
+      shortcut: "Ctrl+Shift+U",
+      action: async () => {
+        if (!editor.selectedFile) {
+          notify("error", "Hata", "Önce bir dosya açmalısınız!");
+          return;
+        }
+
+        notify("info", "Test Oluşturuluyor", "AI kodunuzu analiz ediyor ve testleri yazıyor...");
+
+        try {
+          const { testGenerationService } = await import("./services/testGenerationService");
+          const framework = await testGenerationService.detectFramework(project.projectPath);
+          const testCode = await testGenerationService.generateTests({
+            filePath: editor.selectedFile,
+            sourceCode: editor.fileContent,
+            framework
+          });
+
+          const testPath = await testGenerationService.createTestFile(editor.selectedFile, testCode);
+          notify("success", "Test Tamamlandı", `${testPath} başarıyla oluşturuldu.`);
+
+          // Refresh project files
+          await project.loadOrIndexProject(project.projectPath);
+        } catch (err: any) {
+          notify("error", "Test Hatası", err.message || "Test oluşturulamadı.");
+        }
+      },
     },
   ];
 
