@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { getEmbeddingEndpoint } from "./embedding";
+
 
 export interface CodeChunk {
     id: string;
@@ -35,11 +35,18 @@ export const ragService: RAGService = {
 
     /**
      * Index a file into the vector database
-     * (Backend handles chunking and embedding generation)
+     * (Backend handles chunking and embedding generation locally)
      */
     indexFile: async (filePath: string): Promise<void> => {
         try {
-            await invoke("index_file_vector", { filePath });
+            // Read content first or let backend handle it? 
+            // In our new command vector_index_file, we pass content.
+            const content = await invoke<string>("read_file_content", { path: filePath });
+            await invoke("vector_index_file", {
+                path: filePath,
+                content,
+                chunkType: 'Code'
+            });
             console.log("✅ File indexed:", filePath);
         } catch (error) {
             console.error("❌ Failed to index file:", filePath, error);
@@ -52,14 +59,10 @@ export const ragService: RAGService = {
      */
     indexCommit: async (commit: any): Promise<void> => {
         try {
-            const endpoint = getEmbeddingEndpoint();
-            await invoke("index_manual_vector", {
-                id: `commit:${commit.hash}`,
-                filePath: commit.hash.substring(0, 7),
+            await invoke("vector_index_file", {
+                path: commit.hash.substring(0, 7),
                 content: `Commit: ${commit.message}\nAuthor: ${commit.author}\nDate: ${new Date(commit.timestamp).toLocaleDateString()}`,
-                chunkType: 'Commit',
-                symbolName: commit.author,
-                endpoint
+                chunkType: 'Commit'
             });
             console.log("✅ Commit indexed:", commit.hash);
         } catch (error) {
@@ -68,13 +71,12 @@ export const ragService: RAGService = {
     },
 
     /**
-     * Search for similar code chunks
+     * Search for similar code chunks using the new native semantic search
      */
     search: async (query: string, topK: number = 5): Promise<CodeChunk[]> => {
         try {
-            const endpoint = getEmbeddingEndpoint();
-            const results = await invoke<CodeChunk[]>("vector_search", { query, topK, endpoint });
-            return results;
+            const response = await invoke<{ results: CodeChunk[] }>("semantic_search", { query, limit: topK });
+            return response.results;
         } catch (error) {
             console.error("❌ Vector search failed:", error);
             return [];

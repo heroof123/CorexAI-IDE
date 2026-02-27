@@ -223,7 +223,10 @@ pub async fn chat_with_gguf_model(
 
     // Create context with proper KV cache size (FIX-31)
     let kv_cache_size = (n_ctx + max_tokens).max(4096);
-    let n_batch = 2048; // Optimal batch size for modern GPUs
+    
+    // 🔥 FIXED: n_batch context'in tek seferde işleyebileceği max token sayısıdır.
+    // LlamaBatch boyutu n_batch'den büyük olamaz.
+    let n_batch = 8192; // Max batch size increase
     
     info!("📊 Context Params: n_ctx={}, n_batch={}", kv_cache_size, n_batch);
     
@@ -261,8 +264,7 @@ pub async fn chat_with_gguf_model(
     }
 
     // Create batch - MUST be at least as large as the number of prompt tokens
-    // But not too large (max 8192 for stability)
-    // If prompt is longer than 8192, we'll process it in chunks
+    // But not more than n_batch of the context (FIX for abort crash)
     let max_batch_size = 8192;
     let batch_size = tokens.len().min(max_batch_size);
     
@@ -321,9 +323,11 @@ pub async fn chat_with_gguf_model(
 
     // Token generation
     let mut response_tokens = Vec::new();
-    let mut n_cur = batch.n_tokens();
     
-    info!("🎲 Starting token generation...");
+    // 🔥 FIXED: n_cur her zaman tüm prompt tokenlarının sayısı olmalı (chunking olsa bile)
+    let mut n_cur = tokens.len() as i32;
+    
+    info!("🎲 Starting token generation from position {}", n_cur);
 
     for i in 0..max_tokens {
         // Get candidates
@@ -649,7 +653,7 @@ fn detect_gpu_vram() -> f64 {
 // 🆕 GGUF Metadata Okuyucu - Gerçek Binary Okuma Entegrasyonu
 #[tauri::command]
 pub async fn read_gguf_metadata(path: String) -> Result<serde_json::Value, String> {
-    use std::io::{Read, Seek, SeekFrom};
+    use std::io::Read;
     use std::fs::File;
 
     info!("📖 Gerçek GGUF metadata okuma başlatıldı: {}", path);
@@ -780,7 +784,7 @@ pub async fn chat_with_gguf_vision(
     info!("📷 Starting vision inference...");
     
     // 🆕 Get model and backend from pool with minimum lock time
-    let (loaded_model, backend) = {
+    let (_loaded_model, _backend) = {
         let guard = match state.lock() {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),

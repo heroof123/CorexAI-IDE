@@ -16,10 +16,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::broadcast;
-// use tokio::sync::RwLockAsync; // Removed invalid import
-use log::{debug, error, info, warn};
-use tokio::time::{interval, Duration};
+use log::{debug, info, warn};
 use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::accept_async;
+use tokio::net::TcpListener;
 use uuid::Uuid;
 
 /// Cursor position in the editor with full context
@@ -38,8 +38,8 @@ pub struct UserPresence {
     pub name: String,
     pub color: String,
     pub cursor: Option<CursorPosition>,
-    pub lastSeen: i64,
-    pub isActive: bool,
+    pub last_seen: i64,
+    pub is_active: bool,
 }
 
 impl UserPresence {
@@ -49,8 +49,8 @@ impl UserPresence {
             name,
             color,
             cursor: None,
-            lastSeen: chrono::Utc::now().timestamp(),
-            isActive: true,
+            last_seen: chrono::Utc::now().timestamp(),
+            is_active: true,
         }
     }
 }
@@ -64,15 +64,15 @@ pub enum CollabMessage {
     UserJoin { user: UserPresence },
 
     #[serde(rename = "user_leave")]
-    UserLeave { userId: String },
+    UserLeave { user_id: String },
 
     #[serde(rename = "user_inactive")]
-    UserInactive { userId: String },
+    UserInactive { user_id: String },
 
     // Cursor operations
     #[serde(rename = "cursor_move")]
     CursorMove {
-        userId: String,
+        user_id: String,
         cursor: CursorPosition,
     },
 
@@ -84,7 +84,7 @@ pub enum CollabMessage {
     // File operations
     #[serde(rename = "edit")]
     Edit {
-        userId: String,
+        user_id: String,
         file: String,
         content: String,
         version: u32,
@@ -102,9 +102,9 @@ pub enum CollabMessage {
 
     #[serde(rename = "session_info")]
     SessionInfo {
-        sessionId: String,
-        usersCount: usize,
-        createdAt: i64,
+        session_id: String,
+        users_count: usize,
+        created_at: i64,
     },
 
     // Keepalive
@@ -119,13 +119,13 @@ pub enum CollabMessage {
     Error { code: String, message: String },
 
     #[serde(rename = "ack")]
-    Ack { messageId: String },
+    Ack { message_id: String },
 }
 
 /// Edit operation for batching
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EditOp {
-    pub userId: String,
+    pub user_id: String,
     pub file: String,
     pub changes: Vec<TextChange>,
     pub version: u32,
@@ -143,8 +143,8 @@ pub struct CollabSession {
     pub id: String,
     pub users: Arc<RwLock<HashMap<String, UserPresence>>>,
     pub tx: broadcast::Sender<CollabMessage>,
-    pub createdAt: i64,
-    pub maxUsers: usize,
+    pub created_at: i64,
+    pub max_users: usize,
 }
 
 impl CollabSession {
@@ -156,8 +156,8 @@ impl CollabSession {
             id: Uuid::new_v4().to_string(),
             users: Arc::new(RwLock::new(HashMap::new())),
             tx,
-            createdAt: chrono::Utc::now().timestamp(),
-            maxUsers: max_users, // Fixed initialization
+            created_at: chrono::Utc::now().timestamp(),
+            max_users: max_users, // Fixed initialization
         };
 
         info!("📍 New collaboration session created: {}", session.id);
@@ -168,8 +168,8 @@ impl CollabSession {
     pub fn add_user(&self, presence: UserPresence) -> Result<(), String> {
         let mut users = self.users.write();
 
-        if users.len() >= self.maxUsers {
-            return Err(format!("Session full: {} users max", self.maxUsers));
+        if users.len() >= self.max_users {
+            return Err(format!("Session full: {} users max", self.max_users));
         }
 
         users.insert(presence.id.clone(), presence.clone());
@@ -188,7 +188,7 @@ impl CollabSession {
         debug!("❌ User removed: {} (total: {})", user_id, users.len());
 
         let msg = CollabMessage::UserLeave {
-            userId: user_id.to_string(),
+            user_id: user_id.to_string(),
         };
         let _ = self.tx.send(msg);
     }
@@ -197,12 +197,12 @@ impl CollabSession {
     pub fn mark_inactive(&self, user_id: &str) {
         let mut users = self.users.write();
         if let Some(user) = users.get_mut(user_id) {
-            user.isActive = false;
+            user.is_active = false;
             warn!("⏰ User marked inactive: {}", user_id);
         }
 
         let msg = CollabMessage::UserInactive {
-            userId: user_id.to_string(),
+            user_id: user_id.to_string(),
         };
         let _ = self.tx.send(msg);
     }
@@ -212,11 +212,11 @@ impl CollabSession {
         let mut users = self.users.write();
         if let Some(user) = users.get_mut(user_id) {
             user.cursor = Some(cursor.clone());
-            user.lastSeen = chrono::Utc::now().timestamp();
+            user.last_seen = chrono::Utc::now().timestamp();
         }
 
         let msg = CollabMessage::CursorMove {
-            userId: user_id.to_string(),
+            user_id: user_id.to_string(),
             cursor,
         };
         let _ = self.tx.send(msg);
@@ -228,7 +228,7 @@ impl CollabSession {
         for (user_id, cursor) in &updates {
             if let Some(user) = users.get_mut(user_id) {
                 user.cursor = Some(cursor.clone());
-                user.lastSeen = chrono::Utc::now().timestamp();
+                user.last_seen = chrono::Utc::now().timestamp();
             }
         }
 
@@ -239,7 +239,7 @@ impl CollabSession {
     /// Get all active users
     pub fn get_users(&self) -> Vec<UserPresence> {
         let users = self.users.read();
-        users.values().filter(|u| u.isActive).cloned().collect()
+        users.values().filter(|u| u.is_active).cloned().collect()
     }
 
     /// Get specific user
@@ -252,9 +252,9 @@ impl CollabSession {
     pub fn info(&self) -> CollabMessage {
         let users = self.users.read();
         CollabMessage::SessionInfo {
-            sessionId: self.id.clone(),
-            usersCount: users.len(),
-            createdAt: self.createdAt,
+            session_id: self.id.clone(),
+            users_count: users.len(),
+            created_at: self.created_at,
         }
     }
 
@@ -264,13 +264,126 @@ impl CollabSession {
         let mut users = self.users.write();
         let to_remove: Vec<String> = users
             .iter()
-            .filter(|(_, u)| now - u.lastSeen > timeout_secs)
+            .filter(|(_, u)| now - u.last_seen > timeout_secs)
             .map(|(id, _)| id.clone())
             .collect();
 
         for user_id in to_remove {
             users.remove(&user_id);
             info!("🧹 Cleaned up inactive user: {}", user_id);
+        }
+    }
+}
+
+/// Global collaboration state managed by Tauri
+pub struct CollabState {
+    pub sessions: Arc<RwLock<HashMap<String, Arc<CollabSession>>>>,
+}
+
+impl Default for CollabState {
+    fn default() -> Self {
+        Self {
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+}
+
+// --------------------
+// TAURI COMMANDS
+// --------------------
+
+#[tauri::command]
+pub async fn create_collab_session(
+    state: tauri::State<'_, CollabState>,
+) -> Result<String, String> {
+    let session = Arc::new(CollabSession::new(10));
+    let id = session.id.clone();
+    
+    let mut sessions = state.sessions.write();
+    sessions.insert(id.clone(), session);
+    
+    info!("🚀 Created collab session: {}", id);
+    Ok(id)
+}
+
+#[tauri::command]
+pub async fn start_collab_server(
+    state: tauri::State<'_, CollabState>,
+    port: u16,
+) -> Result<String, String> {
+    let addr = format!("0.0.0.0:{}", port);
+    let listener = TcpListener::bind(&addr).await.map_err(|e| e.to_string())?;
+    let sessions = state.sessions.clone();
+
+    info!("📡 Collaboration server listening on {}", addr);
+
+    tokio::spawn(async move {
+        while let Ok((stream, _)) = listener.accept().await {
+            let sessions = sessions.clone();
+            tokio::spawn(async move {
+                if let Ok(ws_stream) = accept_async(stream).await {
+                    handle_connection(ws_stream, sessions).await;
+                }
+            });
+        }
+    });
+
+    Ok(format!("Server started on {}", addr))
+}
+
+async fn handle_connection(
+    mut ws_stream: tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
+    sessions: Arc<RwLock<HashMap<String, Arc<CollabSession>>>>,
+) {
+    use futures_util::StreamExt;
+    
+    // Simple handshake: First message must be "join_session <id>"
+    if let Some(Ok(Message::Text(text))) = ws_stream.next().await {
+        if text.starts_with("join_session ") {
+            let session_id = text.replace("join_session ", "");
+            let session = {
+                let s = sessions.read();
+                s.get(&session_id).cloned()
+            };
+
+            if let Some(session) = session {
+                let mut rx = session.tx.subscribe();
+                let (mut ws_sender, mut ws_receiver) = ws_stream.split();
+
+                // Forward broadcast messages to this client
+                let mut send_task = tokio::spawn(async move {
+                    while let Ok(msg) = rx.recv().await {
+                        if let Ok(json) = serde_json::to_string(&msg) {
+                            if ws_sender.send(Message::Text(json.into())).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                });
+
+                // Handle messages from this client
+                let session_clone = session.clone();
+                let mut recv_task = tokio::spawn(async move {
+                    while let Some(Ok(Message::Text(text))) = ws_receiver.next().await {
+                        if let Ok(msg) = serde_json::from_str::<CollabMessage>(&text) {
+                            match msg {
+                                CollabMessage::CursorMove { user_id, cursor } => {
+                                    session_clone.update_cursor(&user_id, cursor);
+                                }
+                                _ => {
+                                    // Broadcast other messages
+                                    let _ = session_clone.tx.send(msg);
+                                }
+                            }
+                        }
+                    }
+                });
+
+                tokio::select! {
+                    _ = (&mut send_task) => recv_task.abort(),
+                    _ = (&mut recv_task) => send_task.abort(),
+                };
+            }
         }
     }
 }

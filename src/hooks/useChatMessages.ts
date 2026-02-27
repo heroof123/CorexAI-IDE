@@ -10,6 +10,8 @@ import { CoreMessage } from "../core/protocol";
 import { callAI } from "../services/aiProvider";
 import { smartContextBuilder } from "../services/smartContextBuilder";
 import { createEmbedding } from "../services/embedding";
+import { parseToolCalls, executeTool, getToolsPrompt } from "../services/aiTools";
+import { requiresApproval, getAutonomyConfig } from "../services/autonomy";
 
 // Uzantı → dil eşleştirme tablosu
 const EXTENSION_MAP: Record<string, string> = {
@@ -407,7 +409,8 @@ export function useChatMessages({
             }
 
             // 3. Prepare AI Prompt
-            const fullPrompt = `${projectMapText}${focusText}${contextText}\n\nUser Message: ${userMessage}`;
+            const toolsPrompt = await getToolsPrompt();
+            const fullPrompt = `${projectMapText}${focusText}${contextText}\n\n${toolsPrompt}\n\nUser Message: ${userMessage}`;
             const modelId = getModelIdForRole();
             const conversationHistory = messages.map(m => ({ role: m.role, content: m.content }));
 
@@ -424,7 +427,98 @@ export function useChatMessages({
                     );
                 });
 
-                // 🔥 Completion processing for direct chat!
+                // 🔧 TOOL SYSTEM - Parse and execute tools
+                const toolCallsOpt = parseToolCalls(accumulatedResponse);
+                let toolCall = toolCallsOpt.length > 0 ? toolCallsOpt[0] : null;
+                let toolIterations = 0;
+                const maxToolIterations = 5;
+
+                while (toolCall && toolIterations < maxToolIterations) {
+                    toolIterations++;
+                    const currentToolCall = toolCall;
+
+                    // Check autonomy/approval
+                    const autonomyConfig = getAutonomyConfig();
+                    const needsApproval = requiresApproval(currentToolCall.toolName, currentToolCall.parameters, autonomyConfig);
+
+                    if (needsApproval) {
+                        // Request approval via UI
+                        const approved = await new Promise<boolean>((resolve) => {
+                            setToolApprovalRequest({
+                                toolName: currentToolCall.toolName,
+                                parameters: currentToolCall.parameters as any,
+                                resolve
+                            });
+                        });
+                        setToolApprovalRequest(null);
+
+                        if (!approved) {
+                            // Add rejection to history and AI
+                            const rejectionMsg: Message = {
+                                id: generateMessageId("system"),
+                                role: "system",
+                                content: `🚫 **Tool reddedildi:** \`${currentToolCall.toolName}\``,
+                                timestamp: Date.now()
+                            };
+                            setMessages(prev => [...prev, rejectionMsg]);
+                            break; // Stop loop if rejected
+                        }
+                    }
+
+                    // Execute Tool
+                    const toolExecutionId = generateMessageId("tool-exec");
+                    setMessages(prev => [...prev, {
+                        id: toolExecutionId,
+                        role: "system",
+                        content: `🔧 **Tool çalıştırılıyor:** \`${currentToolCall.toolName}\`...`,
+                        toolExecution: {
+                            toolName: currentToolCall.toolName,
+                            status: 'running',
+                            startTime: Date.now()
+                        },
+                        timestamp: Date.now()
+                    }]);
+
+                    const toolResult = await executeTool(currentToolCall.toolName, currentToolCall.parameters);
+
+                    // Update tool execution status
+                    setMessages(prev => prev.map(msg =>
+                        msg.id === toolExecutionId
+                            ? {
+                                ...msg,
+                                content: toolResult.success
+                                    ? `✅ **Tool tamamlandı:** \`${currentToolCall.toolName}\``
+                                    : `❌ **Tool hatası:** \`${currentToolCall.toolName}\` - ${toolResult.error}`,
+                                toolExecution: {
+                                    ...msg.toolExecution!,
+                                    status: toolResult.success ? 'completed' : 'failed',
+                                    endTime: Date.now(),
+                                    result: toolResult
+                                }
+                            }
+                            : msg
+                    ));
+
+                    // Feed result back to AI
+                    const resultPrompt = `🔧 Tool Result (${currentToolCall.toolName}):\n${JSON.stringify(toolResult, null, 2)}\n\nLütfen devam et.`;
+                    const currentHistory = [...conversationHistory, { role: 'assistant', content: accumulatedResponse }, { role: 'user', content: resultPrompt }];
+
+                    accumulatedResponse = "";
+                    const nextMsgId = generateMessageId("assistant");
+                    setMessages(prev => [...prev, { id: nextMsgId, role: "assistant", content: "", timestamp: Date.now() }]);
+
+                    await callAI(resultPrompt, modelId, currentHistory, (token: string) => {
+                        accumulatedResponse += token;
+                        setMessages((prev) =>
+                            prev.map((msg) => (msg.id === nextMsgId ? { ...msg, content: accumulatedResponse } : msg))
+                        );
+                    });
+
+                    const nextToolCalls = parseToolCalls(accumulatedResponse);
+                    toolCall = nextToolCalls.length > 0 ? nextToolCalls[0] : null;
+                }
+
+                // 🔥 Completion processing for final response
                 processFinalResponse(accumulatedResponse, msgId);
 
             } catch (err) {

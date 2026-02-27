@@ -7,6 +7,7 @@ use reqwest::Client;
 use serde_json::json;
 use log::{info, error};
 use tauri::{AppHandle, Manager, Emitter};
+use crate::process_monitor::MonitorState;
 
 // --------------------
 // SYSTEM UTILITIES
@@ -474,8 +475,12 @@ const ALLOWED_COMMAND_LIST: &[&str] = &[
 ];
 
 #[tauri::command]
-pub fn execute_terminal_command(command: String, path: String) -> Result<serde_json::Value, String> {
+pub fn execute_terminal_command(command: String, path: String, app: AppHandle) -> Result<serde_json::Value, String> {
     info!("🔧 Komut çalıştırılıyor: {} (dizin: {})", command, path);
+    
+    // Get monitor if initialized
+    let monitor_state: tauri::State<MonitorState> = app.state();
+    let monitor_lock = monitor_state.0.lock().unwrap_or_else(|e| e.into_inner());
     
     // Command validation
     let first_word = command.split_whitespace().next().unwrap_or("");
@@ -518,6 +523,15 @@ pub fn execute_terminal_command(command: String, path: String) -> Result<serde_j
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         
+        // Monitor for errors
+        if let Some(m) = monitor_lock.as_ref() {
+            if !output.status.success() {
+                m.monitor_output(&stderr);
+            } else {
+                m.monitor_output(&stdout);
+            }
+        }
+
         Ok(serde_json::json!({
             "success": output.status.success(),
             "stdout": stdout,
@@ -540,6 +554,15 @@ pub fn execute_terminal_command(command: String, path: String) -> Result<serde_j
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         
+        // Monitor for errors (macOS/Linux)
+        if let Some(m) = monitor_lock.as_ref() {
+            if !output.status.success() {
+                m.monitor_output(&stderr);
+            } else {
+                m.monitor_output(&stdout);
+            }
+        }
+
         Ok(serde_json::json!({
             "success": output.status.success(),
             "stdout": stdout,
@@ -596,6 +619,85 @@ pub async fn create_embedding_bge(text: String, endpoint: Option<String>) -> Res
 
     Ok(embedding)
 }
+
+// --------------------
+// VECTOR DB / RAG COMMANDS
+// --------------------
+
+/// Searches the vector database for a given query string
+#[tauri::command]
+pub async fn semantic_search(
+    query: String,
+    limit: Option<usize>,
+    app: AppHandle,
+) -> Result<serde_json::Value, String> {
+    info!("🔍 Semantic search başlatıldı: '{}'", query);
+    
+    // Get VectorDB instance from app state
+    let vector_db = app.state::<crate::vector_db::VectorDB>();
+    
+    // 1. Generate embedding for query using internal fastembed
+    let query_embedding = vector_db.generate_embedding(&query).await.map_err(|e| e.to_string())?;
+
+    // 2. Query VectorDB
+    let top_k = limit.unwrap_or(5);
+    let results = vector_db.query(query_embedding, top_k).await.map_err(|e| e.to_string())?;
+
+    info!("✅ Bulunan sonuç sayısı: {}", results.len());
+    
+    Ok(json!({
+        "success": true,
+        "results": results
+    }))
+}
+
+
+/// Index a document/file into the vector database
+#[tauri::command]
+pub async fn vector_index_file(
+    path: String,
+    content: String,
+    chunk_type: String,
+    app: AppHandle,
+) -> Result<serde_json::Value, String> {
+    info!("📚 VectorDB Indexleme başlatıldı: '{}'", path);
+    
+    // Get VectorDB instance
+    let vector_db = app.state::<crate::vector_db::VectorDB>();
+
+    // Chunking logic (very basic for now, can be improved)
+    let chunks: Vec<&str> = content.split("\n\n").filter(|s| !s.trim().is_empty()).collect();
+    
+    let mut code_chunks = Vec::new();
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    for (i, text_chunk) in chunks.iter().enumerate() {
+        code_chunks.push(crate::vector_db::CodeChunk {
+            id: format!("{}:chunk{}", path, i),
+            file_path: path.clone(),
+            content: text_chunk.to_string(),
+            embedding: vec![], // Will be generated in upsert
+            symbol_name: None,
+            chunk_type: chunk_type.clone(),
+            timestamp,
+        });
+    }
+
+    match vector_db.upsert(code_chunks).await {
+        Ok(_) => {
+            info!("✅ {} parse edildi ve indekslendi", path);
+            Ok(json!({ "success": true, "chunks": chunks.len() }))
+        },
+        Err(e) => {
+            error!("❌ VectorDB upsert hatası [{}]: {}", path, e);
+            Err(e.to_string())
+        }
+    }
+}
+
 // --------------------
 // FILE MANAGEMENT
 // --------------------
@@ -1224,9 +1326,7 @@ pub async fn build_rag_context(
     // Build context with database and embedding
     let global_db = VECTOR_DB.lock().await;
     let db = global_db.as_ref().ok_or("VectorDB not initialized")?;
-    let query_embedding = create_embedding_bge(query.clone(), None).await?;
-    
-    let result: Result<(String, Vec<ContextSource>), Box<dyn std::error::Error>> = pipeline.build_context(intent.clone(), &query, db, query_embedding).await;
+    let result: Result<(String, Vec<ContextSource>), Box<dyn std::error::Error>> = pipeline.build_context(intent.clone(), &query, db).await;
     let (context, sources) = result.map_err(|e| format!("Context build hatası: {}", e))?;
     
     info!("✅ Context oluşturuldu: {} tokens", RAGPipeline::estimate_tokens(&context));

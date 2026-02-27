@@ -105,9 +105,8 @@ impl RAGPipeline {
     pub async fn build_context(
         &self,
         intent: QueryIntent,
-        _query: &str,
+        query: &str,
         vector_db: &crate::vector_db::VectorDB,
-        query_embedding: Vec<f32>,
     ) -> Result<(String, Vec<ContextSource>), Box<dyn Error>> {
         let mut context = String::new();
         let mut sources: Vec<ContextSource> = Vec::new();
@@ -119,6 +118,8 @@ impl RAGPipeline {
             _ => 3,
         };
 
+        // Generate embedding using the VectorDB's internal fastembed model
+        let query_embedding = vector_db.generate_embedding(query).await?;
         let chunks = vector_db.query(query_embedding, top_k).await.unwrap_or_default();
 
         if !chunks.is_empty() {

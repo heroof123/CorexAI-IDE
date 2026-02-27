@@ -196,11 +196,35 @@ export default function GGUFModelBrowser({ onModelSelect }: GGUFModelBrowserProp
   (window as any).saveGGUFConversationHistory = saveConversationHistory;
 
   useEffect(() => {
-    const saved = localStorage.getItem('gguf-download-folder');
-    if (saved) {
-      setDownloadFolder(saved);
-      checkDownloadedModels(saved);
-    }
+    const initDefaultFolder = async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        let homeDir = await invoke<string>('get_home_dir');
+        const separator = homeDir.includes('\\') ? '\\' : '/';
+        const defaultPath = `${homeDir}${separator}.corex${separator}models`;
+
+        const saved = localStorage.getItem('gguf-download-folder');
+
+        // Eğer kullanıcı daha önce .corex içi bir yol ayarlamadıysa (yani farklı projelerde kalitesiz path kaldıysa) varsayılana zorla.
+        if (saved && saved.includes('.corex')) {
+          setDownloadFolder(saved);
+          checkDownloadedModels(saved);
+        } else {
+          setDownloadFolder(defaultPath);
+          localStorage.setItem('gguf-download-folder', defaultPath);
+
+          try {
+            await invoke('create_directory', { path: defaultPath });
+          } catch (e) {
+            console.log("Directory exist or can't be created", e);
+          }
+          checkDownloadedModels(defaultPath);
+        }
+      } catch (error) {
+        console.error('Default folder ayarlanamadı:', error);
+      }
+    };
+    initDefaultFolder();
 
     const savedModels = localStorage.getItem('gguf-models');
     if (savedModels) {

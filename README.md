@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/github/license/heroof123/CorexAI)](https://github.com/heroof123/CorexAI/blob/main/LICENSE)
 [![Issues](https://img.shields.io/github/issues/heroof123/CorexAI)](https://github.com/heroof123/CorexAI/issues)
 
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![Version](https://img.shields.io/badge/version-1.0.0-brightgreen)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue)
 ![React](https://img.shields.io/badge/React-19-61dafb)
@@ -46,7 +46,12 @@
 
 ---
 
-## 🚀 Recent Major Updates (v0.2.0 - Current)
+- **v1.0.0 Release (Milestone Complete)**: 
+    - 🔌 **Full MCP Integration**: Tool-calling support for local/remote servers.
+    - 🧩 **Extension Marketplace**: Browse and manage plugins with a premium UI.
+    - 🎓 **Interactive Academy**: Personal AI tutor analyzing your code.
+    - ⚔️ **Model Roulette**: Side-by-side multi-LLM comparison arena.
+    - 📚 **Stable API**: Dedicated documentation for extension developers.
 - **Robust GGUF Support**: Fixed context length issues and optimized batch processing.
 - **Security Hardening**: Secure storage for all API keys, shell injection protection, and safe terminal commands.
 - **RAG Optimization**: Vector DB distance-based filtering and smart code chunking for 10x better context.
@@ -359,25 +364,35 @@ MIT License - see [LICENSE](LICENSE) file
 ## 🗺️ Roadmap
 
 ### v0.2.x
-- [x] Professional Light Theme implementation
-- [x] Visual Project Graph visualization
-- [x] Enhanced GGUF Model Browser & Context Fixes
-- [x] AI Knowledge Base (.corexrules support)
-- [x] Plugin system (Beta)
-- [x] Automated Test generation & execution
-- [ ] MCP (Model Context Protocol) Integration
+- [x] Professional Light Theme implementation [x]
+- [x] Visual Project Graph visualization [x]
+- [x] Enhanced GGUF Model Browser & Context Fixes [x]
+- [x] AI Knowledge Base (.corexrules support) [x]
+- [x] Plugin system (Full Release) [x]
+- [x] Automated Test generation & execution [x]
+- [x] MCP (Model Context Protocol) Integration [x]
 
-### v0.3.0
-- [ ] Remote development (SSH/Docker)
-- [ ] Collaborative editing
-- [ ] Enhanced Git features (AI Conflict Resolution)
-- [ ] Custom themes marketplace (Marketplace UI)
+### v1.0.0 (Release)
+- [x] Stable API [x]
+- [x] Full documentation [x]
+- [x] Performance optimizations [x]
+- [x] Extension marketplace [x]
+- [x] Interactive Academy [x]
+- [x] Model Roulette (Arena) [x]
 
-### v1.0.0
-- [ ] Stable API
-- [ ] Full documentation
-- [ ] Performance optimizations
-- [ ] Extension marketplace
+### v1.1.0 - Advanced Intelligence (Gelişmiş Zeka) - [Mevcut]
+- [x] **Sesli Kontrol:** Web Speech API ile eller serbest kod yönetimi.
+- [x] **AI Debug Advisor:** Hata ayıklarken canlı değişken ve stack analizi.
+- [x] **VS Code Uyumluluğu:** Tema ve Snippet içe aktarma desteği.
+- [x] **Gelişmiş Ajan Döngüsü:** MCP araçları ile otonom görev yönetimi.
+
+### v1.2.0 - Team & Remote (Planlanan)
+- [x] **Remote Development:** SSH/Docker üzerinden uzaktan kodlama.
+- [ ] **Collaborative Coding:** Canlı ortak çalışma modu.
+- [ ] **AI Pair Review:** Pull Request'ler için otomatik AI inceleme asistanı.
+
+---
+*CorexAI ekibi by heroof123*
 
 ## 📊 Project Status
 

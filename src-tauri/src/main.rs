@@ -3,72 +3,17 @@
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod collab; // 🆕 WebSocket collaboration
-mod commands;
-mod gguf;
-mod mcp;
-mod oauth;
-mod oauth_backend;
-mod rag_pipeline;
-mod streaming;
-mod tree_sitter_parser;
-
-mod vector_db; // 🆕 MCP (Model Context Protocol)
-mod window_manager; // 🆕 Low-level window management
-
-use commands::{
-    // RAG Pipeline commands
-    analyze_query_intent,
-    build_rag_context,
-    chat_with_ai,
-    chat_with_dynamic_ai,
-    chat_with_specific_ai,
-    clear_ast_cache,
-    close_window,
-    create_embedding_bge,
-    create_file,
-    delete_file_index,
-    download_gguf_model,
-    execute_terminal_command,
-    get_all_files,
-    git_log_project,
-    index_file_vector,
-    index_manual_vector,
-    // Vector DB commands
-    init_vector_db,
-    invalidate_file_cache,
-    list_plugins,
-    maximize_window,
-    minimize_window,
-    open_terminal,
-    // Tree-sitter Parser commands
-    parse_file_ast,
-    read_file,
-    read_file_content,
-    scan_project,
-    test_project,
-    vector_search,
-    write_file,
+// Use modules from lib
+use corex_lib::{
+    collab, commands, docker, gguf, git_commands, mcp, oauth, oauth_backend, 
+    remote, streaming, window_manager
 };
+use corex_lib::process_monitor::{ProcessMonitor, MonitorState};
+use corex_lib::gguf::GgufState;
+use corex_lib::collab::CollabState;
+use corex_lib::mcp::McpState;
 
-use gguf::{
-    chat_with_gguf_model,
-    chat_with_gguf_vision, // 🆕 Vision AI
-    check_cuda_support,
-    get_gguf_model_status,
-    get_gpu_memory_info,
-    load_gguf_model,
-    read_gguf_metadata,
-    unload_gguf_model,
-    GgufState,
-};
-
-use mcp::{list_mcp_servers, send_mcp_request, start_mcp_server, stop_mcp_server, McpState};
-
-use oauth::oauth_authenticate;
-use oauth_backend::{exchange_oauth_token, refresh_oauth_token};
-use streaming::{chat_with_http_streaming, chat_with_streaming};
-
+use tauri::Manager;
 use std::sync::{Arc, Mutex};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -88,28 +33,57 @@ pub fn run() {
     let gguf_state = Arc::new(Mutex::new(GgufState::default()));
     // MCP state oluştur
     let mcp_state = McpState::default();
+    // Collaboration state oluştur
+    let collab_state = CollabState::default();
+    // Process monitor state oluştur
+    let monitor_state = MonitorState(Arc::new(Mutex::new(None)));
 
     tauri::Builder::default()
         .manage(gguf_state.clone())
         .manage(mcp_state)
+        .manage(collab_state)
+        .manage(monitor_state.clone())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build())
+        .setup(move |app| {
+            // Initialize VectorDB synchronously on startup, or spawn an async task
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                // HOTFIX: db_path'i src-tauri'nin dışına alıyoruz ki `tauri dev` watcher'ı her data yazımında backend'i baştan derlemesin.
+                let db_path = "../.corex_vector_data";
+                match corex_lib::vector_db::VectorDB::init(db_path).await {
+                    Ok(db) => {
+                        app_handle.manage(db);
+                        log::info!("✅ VectorDB initialized successfully at {}", db_path);
+                    }
+                    Err(e) => {
+                        log::error!("❌ Failed to initialize VectorDB: {}", e);
+                    }
+                }
+            });
+
+            // Initialize ProcessMonitor
+            let mut monitor = monitor_state.0.lock().unwrap();
+            *monitor = Some(ProcessMonitor::new(app.handle().clone()));
+
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
-            scan_project,
-            read_file,
-            write_file,
-            create_file,
-            chat_with_ai,
-            chat_with_specific_ai,
-            chat_with_dynamic_ai,
-            create_embedding_bge,
-            test_project,
-            open_terminal,
-            execute_terminal_command,
-            minimize_window,
-            maximize_window,
-            close_window,
+            commands::scan_project,
+            commands::read_file,
+            commands::write_file,
+            commands::create_file,
+            commands::chat_with_ai,
+            commands::chat_with_specific_ai,
+            commands::chat_with_dynamic_ai,
+            commands::create_embedding_bge,
+            commands::test_project,
+            commands::open_terminal,
+            commands::execute_terminal_command,
+            commands::minimize_window,
+            commands::maximize_window,
+            commands::close_window,
             commands::get_home_dir,
             commands::create_directory,
             commands::delete_file,
@@ -126,46 +100,64 @@ pub fn run() {
             commands::git_log_file,
             commands::git_log_project,
             commands::git_blame,
+            git_commands::generate_semantic_commit_message,
+            git_commands::git_create_branch,
+            git_commands::git_smart_commit,
             commands::execute_command,
-            commands::test_provider_connection, // FIX-41 backend test
-            load_gguf_model,
-            chat_with_gguf_model,
-            chat_with_gguf_vision,
-            unload_gguf_model,
-            get_gguf_model_status,
-            get_gpu_memory_info,
-            read_gguf_metadata,
-            check_cuda_support,
-            download_gguf_model,
-            get_all_files,
-            read_file_content,
-            oauth_authenticate,
-            exchange_oauth_token,
-            refresh_oauth_token,
-            chat_with_streaming,
-            chat_with_http_streaming,
+            commands::test_provider_connection,
+            gguf::load_gguf_model,
+            gguf::chat_with_gguf_model,
+            gguf::chat_with_gguf_vision,
+            gguf::unload_gguf_model,
+            gguf::get_gguf_model_status,
+            gguf::get_gpu_memory_info,
+            gguf::read_gguf_metadata,
+            gguf::check_cuda_support,
+            commands::download_gguf_model,
+            commands::get_all_files,
+            commands::read_file_content,
+            oauth::oauth_authenticate,
+            oauth_backend::exchange_oauth_token,
+            oauth_backend::refresh_oauth_token,
+            streaming::chat_with_streaming,
+            streaming::chat_with_http_streaming,
             // Vector DB commands
-            init_vector_db,
-            vector_search,
-            index_file_vector,
-            index_manual_vector,
-            delete_file_index,
+            commands::init_vector_db,
+            commands::vector_search,
+            commands::semantic_search,
+            commands::index_file_vector,
+            commands::vector_index_file,
+            commands::index_manual_vector,
+            commands::delete_file_index,
             // RAG Pipeline commands
-            analyze_query_intent,
-            build_rag_context,
+            commands::analyze_query_intent,
+            commands::build_rag_context,
             // Tree-sitter Parser commands
-            parse_file_ast,
-            clear_ast_cache,
-            invalidate_file_cache,
+            commands::parse_file_ast,
+            commands::clear_ast_cache,
+            commands::invalidate_file_cache,
             // MCP commands
-            start_mcp_server,
-            stop_mcp_server,
-            send_mcp_request,
-            list_mcp_servers,
+            mcp::start_mcp_server,
+            mcp::stop_mcp_server,
+            mcp::send_mcp_request,
+            mcp::list_mcp_servers,
             // Window management
             window_manager::open_new_window,
             // Plugin System Beta
-            list_plugins,
+            commands::list_plugins,
+            // Collaboration commands
+            collab::create_collab_session,
+            collab::start_collab_server,
+            // Remote Development commands
+            remote::remote_ssh_connect,
+            remote::remote_ssh_list_dir,
+            remote::remote_ssh_read_file,
+            // Docker integration commands
+            docker::docker_list_containers,
+            docker::docker_list_images,
+            docker::docker_container_action,
+            docker::docker_remove_image,
+            docker::docker_compose_action,
         ])
         .on_window_event(move |_window, event| {
             if let tauri::WindowEvent::Destroyed = event {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as monaco from "monaco-editor";
 import { predictionService } from "../services/predictionService";
+import { collabService, UserPresence } from "../services/collaborationService";
 
 interface EnhancedEditorProps {
   filePath: string;
@@ -260,12 +261,68 @@ export default function EnhancedEditor({
       },
     });
 
+    // 🌐 Collaboration Cursors
+    const decorationsRef = { current: [] as string[] };
+    const unsubCollabUsers = collabService.onUsersUpdate((users: UserPresence[]) => {
+      if (!monacoRef.current) return;
+
+      const newDecorations: monaco.editor.IModelDeltaDecoration[] = [];
+      users.forEach(user => {
+        if (user.cursor && user.cursor.file === filePath) {
+          newDecorations.push({
+            range: new monaco.Range(user.cursor.line, user.cursor.column, user.cursor.line, user.cursor.column + 1),
+            options: {
+              className: `remote-cursor-${user.id}`,
+              hoverMessage: { value: `**${user.name}**` },
+              before: {
+                content: user.name.charAt(0).toUpperCase(),
+                inlineClassName: 'remote-cursor-label',
+                inlineClassNameAffectsLetterSpacing: true
+              }
+            }
+          });
+
+          // Add dynamic style for this user if not already present
+          const styleId = `style-collab-${user.id}`;
+          if (!document.getElementById(styleId)) {
+            const style = document.createElement('style');
+            style.id = styleId;
+            style.innerHTML = `
+              .remote-cursor-${user.id} {
+                border-left: 2px solid ${user.color};
+                margin-left: -1px;
+                position: relative;
+              }
+              .remote-cursor-label {
+                position: absolute;
+                top: -14px;
+                left: 0;
+                background: ${user.color};
+                color: white;
+                font-size: 9px;
+                font-weight: bold;
+                padding: 0 4px;
+                border-radius: 2px;
+                pointer-events: none;
+                white-space: nowrap;
+                z-index: 10;
+              }
+            `;
+            document.head.appendChild(style);
+          }
+        }
+      });
+
+      decorationsRef.current = editor.deltaDecorations(decorationsRef.current, newDecorations);
+    });
+
     // Cleanup
     return () => {
       disposable.dispose();
       cursorDisposable.dispose();
       selectionDisposable.dispose();
       completionProvider.dispose();
+      unsubCollabUsers();
       editor.dispose();
     };
   }, [filePath]);
@@ -303,8 +360,8 @@ export default function EnhancedEditor({
           <button
             onClick={() => setShowLineNumbers(!showLineNumbers)}
             className={`px-2 py-1 text-xs rounded transition-colors ${showLineNumbers
-                ? "bg-[var(--color-primary)] text-white"
-                : "hover:bg-[var(--color-hover)]"
+              ? "bg-[var(--color-primary)] text-white"
+              : "hover:bg-[var(--color-hover)]"
               }`}
             title="Toggle Line Numbers (Ctrl+Shift+L)"
           >

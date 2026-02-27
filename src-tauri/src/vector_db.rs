@@ -11,6 +11,7 @@ use arrow_array::{RecordBatch, RecordBatchIterator, StringArray, Float32Array, U
 use arrow_schema::{Schema, Field, DataType};
 use futures_util::StreamExt;
 use std::sync::Arc as StdArc;
+use fastembed::{TextEmbedding, InitOptions};
 
 /// Represents a code chunk stored in the vector database
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,7 +45,6 @@ impl CodeChunk {
         let ids: Vec<String> = chunks.iter().map(|c| c.id.clone()).collect();
         let file_paths: Vec<String> = chunks.iter().map(|c| c.file_path.clone()).collect();
         let contents: Vec<String> = chunks.iter().map(|c| c.content.clone()).collect();
-        let embeddings: Vec<f32> = chunks.iter().flat_map(|c| c.embedding.clone()).collect();
         let symbol_names: Vec<Option<String>> = chunks.iter().map(|c| c.symbol_name.clone()).collect();
         let chunk_types: Vec<String> = chunks.iter().map(|c| c.chunk_type.clone()).collect();
         let timestamps: Vec<u64> = chunks.iter().map(|c| c.timestamp).collect();
@@ -53,7 +53,18 @@ impl CodeChunk {
         let id_array = StringArray::from(ids);
         let file_path_array = StringArray::from(file_paths);
         let content_array = StringArray::from(contents);
-        let embedding_array = Float32Array::from(embeddings);
+        let flat_embeddings: Vec<f32> = chunks.iter().flat_map(|c| c.embedding.clone()).collect();
+        let value_array = Float32Array::from(flat_embeddings);
+        
+        // Wrap flat array into FixedSizeListArray
+        let embedding_field = StdArc::new(Field::new("item", DataType::Float32, true));
+        let embedding_array = FixedSizeListArray::try_new(
+            embedding_field,
+            embedding_dim as i32,
+            StdArc::new(value_array),
+            None,
+        ).map_err(|e| format!("Failed to create FixedSizeListArray: {}", e))?;
+
         let symbol_name_array = StringArray::from(
             symbol_names.iter().map(|s| s.as_deref()).collect::<Vec<_>>()
         );
@@ -96,6 +107,7 @@ impl CodeChunk {
 pub struct VectorDB {
     connection: Arc<Mutex<Connection>>,
     table_name: String,
+    embedding_model: Arc<Mutex<TextEmbedding>>,
 }
 
 impl VectorDB {
@@ -105,9 +117,14 @@ impl VectorDB {
         
         let table_name = "code_chunks".to_string();
         
+        // Initialize the embedding model (BGE-Small-EN-v1.5 is small and fast for offline usage)
+        let model = TextEmbedding::try_new(InitOptions::default())
+            .map_err(|e| format!("Failed to load embedding model: {}", e))?;
+        
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
             table_name,
+            embedding_model: Arc::new(Mutex::new(model)),
         })
     }
     
@@ -123,10 +140,32 @@ impl VectorDB {
         }
     }
     
+    /// Generate embedding for a given text
+    pub async fn generate_embedding(&self, text: &str) -> Result<Vec<f32>, Box<dyn Error>> {
+        let mut model = self.embedding_model.lock().await;
+        let embeddings: Vec<Vec<f32>> = model.embed(vec![text], None)
+            .map_err(|e| format!("Embedding generation error: {}", e))?;
+        
+        if let Some(first) = embeddings.into_iter().next() {
+            Ok(first)
+        } else {
+            Err("No embeddings returned".into())
+        }
+    }
+
+    /// Generate embeddings for multiple texts
+    pub async fn generate_embeddings(&self, texts: Vec<&str>) -> Result<Vec<Vec<f32>>, Box<dyn Error>> {
+        let mut model = self.embedding_model.lock().await;
+        let embeddings: Vec<Vec<f32>> = model.embed(texts, None)
+            .map_err(|e| format!("Embedding generation error: {}", e))?;
+        Ok(embeddings)
+    }
+
     /// Insert or update code chunks in the vector database
+    /// NOTE: embeddings should be generated prior to this step or within it
     pub async fn upsert(&self, chunks: Vec<CodeChunk>) -> Result<(), Box<dyn Error>> {
         // Filter out empty or too small chunks (FIX-41)
-        let valid_chunks: Vec<CodeChunk> = chunks.into_iter()
+        let mut valid_chunks: Vec<CodeChunk> = chunks.into_iter()
             .filter(|c| c.content.trim().len() > 10)
             .collect();
 
@@ -134,6 +173,24 @@ impl VectorDB {
             return Ok(());
         }
         
+        // Make sure all valid chunks have embeddings
+        let mut texts_to_embed = Vec::new();
+        let mut chunk_indices_to_embed = Vec::new();
+        
+        for (idx, chunk) in valid_chunks.iter().enumerate() {
+            if chunk.embedding.is_empty() {
+                texts_to_embed.push(chunk.content.as_str());
+                chunk_indices_to_embed.push(idx);
+            }
+        }
+        
+        if !texts_to_embed.is_empty() {
+            let generated_embeddings = self.generate_embeddings(texts_to_embed).await?;
+            for (i, embedding) in generated_embeddings.into_iter().enumerate() {
+                valid_chunks[chunk_indices_to_embed[i]].embedding = embedding;
+            }
+        }
+
         let conn = self.connection.lock().await;
 
         // Split into batches of 1000 to prevent memory issues and improve write performance (FIX-26)

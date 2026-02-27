@@ -26,7 +26,6 @@ import { agentService } from "./services/agentService";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { Login } from "./components/auth/Login";
 import { ProjectDashboard } from "./components/dashboard/ProjectDashboard";
-
 // Core components (always needed)
 import ChatPanel from "./components/chatpanel";
 import NotificationToast from "./components/notificationToast";
@@ -61,6 +60,10 @@ const AdvancedTheming = lazy(() => import("./components/AdvancedTheming"));
 const RemoteDevelopment = lazy(() => import("./components/RemoteDevelopment"));
 const SidePanel = lazy(() => import("./components/SidePanel"));
 const AISettings = lazy(() => import("./components/AISettings"));
+const CollabOverlay = lazy(() => import("./components/CollabOverlay"));
+import { VoiceControlOverlay } from "./components/VoiceControlOverlay";
+import { voiceService } from "./services/voiceService";
+import { Mic } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AppContent — tüm hook'ları birleştiren composition katmanı
@@ -149,10 +152,40 @@ function AppContent() {
     agentService.registerChatCallback(callback);
 
     // Cleanup - Eski callback'i temizle
-    return () => {
-      agentService.unregisterChatCallback(callback);
-    };
-  }, [chat.addMessage, showRightSidebar, toggleRightSidebar]);
+    return () => agentService.registerChatCallback(() => { });
+  }, [showRightSidebar, toggleRightSidebar]);
+
+  // 🎙️ Voice Command Handling
+  const [isVoiceSupported] = useState(voiceService.isSupported());
+  const [voiceStatus, setVoiceStatus] = useState<'listening' | 'idle' | 'processing' | 'error'>('idle');
+
+  useEffect(() => {
+    voiceService.onStatus(setVoiceStatus);
+  }, []);
+
+  const handleVoiceCommand = (command: string) => {
+    console.log("🎤 Voice Command Received:", command);
+    switch (command) {
+      case 'SAVE':
+        editor.saveFile();
+        notify("success", "Sesli Komut", "Dosya kaydedildi!");
+        break;
+      case 'FORMAT':
+        // Monaco format command can be triggered via editor instance
+        // For now, let's notify. We could use editor.formatDocument() if exposed.
+        notify("info", "Sesli Komut", "Kod formatlanıyor...");
+        break;
+      case 'TOGGLE_SIDEBAR':
+        toggleLeftSidebar();
+        break;
+      case 'TOGGLE_CHAT':
+        toggleRightSidebar();
+        break;
+      case 'NEW_AGENT':
+        chat.sendMessage("/agent");
+        break;
+    }
+  };
 
   // ── AI Background Analysis (proaktif — dosya açıldığında otomatik) ────────
   const [isAIReady, setIsAIReady] = useState(false);
@@ -228,8 +261,21 @@ function AppContent() {
       }
     };
 
+    const handleOpenBrowser = (e: any) => {
+      const { url } = e.detail || {};
+      ui.setShowBrowserPanel(true);
+      if (url) {
+        notify("info", "Otonom Test", `Tarayıcı açılıyor: ${url}`);
+        // NOT: İleride BrowserPanel state'i dışarıdan URL update alacak şekilde genişletilebilir.
+      }
+    };
+
     window.addEventListener('corex:register-theme', handleRegisterTheme);
-    return () => window.removeEventListener('corex:register-theme', handleRegisterTheme);
+    window.addEventListener('corex:open-browser', handleOpenBrowser);
+    return () => {
+      window.removeEventListener('corex:register-theme', handleRegisterTheme);
+      window.removeEventListener('corex:open-browser', handleOpenBrowser);
+    };
   }, []);
 
   // ── Keyboard Shortcuts ───────────────────────────────────────────────────
@@ -1111,7 +1157,7 @@ function AppContent() {
 
               <div className="h-5 bg-[var(--color-background)] border-t border-[var(--color-border)] flex items-center justify-between px-3 flex-shrink-0">
                 {/* AI Problems Panel Trigger */}
-                <div style={{ height: "100%", display: "flex", alignItems: "center" }}>
+                <div style={{ height: "100%", display: "flex", alignItems: "center", gap: 12 }}>
                   <AIProblemsPanel
                     isOpen={aiAnalysis.isPanelOpen}
                     onToggle={() => aiAnalysis.setIsPanelOpen(p => !p)}
@@ -1122,20 +1168,39 @@ function AppContent() {
                     selectedFile={editor.selectedFile}
                     onFileClick={editor.openFile}
                   />
+
+                  {/* Voice Control Trigger */}
+                  {isVoiceSupported && (
+                    <button
+                      onClick={() => voiceStatus === 'listening' ? voiceService.stop() : voiceService.start()}
+                      className={`flex items-center gap-1.5 px-2 py-0.5 rounded transition-all ${voiceStatus === 'listening' ? 'bg-red-500/20 text-red-500 animate-pulse' : 'hover:bg-white/5 text-neutral-400'
+                        }`}
+                      title="Sesli Komut (Ctrl+Shift+V)"
+                    >
+                      {voiceStatus === 'listening' ? <Mic size={12} fill="currentColor" /> : <Mic size={12} />}
+                      <span className="text-[10px] font-bold">SESLİ {voiceStatus === 'listening' ? 'AÇIK' : ''}</span>
+                    </button>
+                  )}
                 </div>
-                <span
-                  className="text-xs font-medium"
-                  style={{
-                    color: "var(--color-textSecondary)",
-                    background: "var(--color-surface)",
-                    padding: "2px 6px",
-                    borderRadius: "3px",
-                    border: "1px solid var(--color-border)",
-                  }}
-                >
-                  Corex v0.1.0
-                </span>
+
+                <div className="flex items-center gap-2">
+                  <span
+                    className="text-xs font-medium"
+                    style={{
+                      color: "var(--color-textSecondary)",
+                      background: "var(--color-surface)",
+                      padding: "2px 6px",
+                      borderRadius: "3px",
+                      border: "1px solid var(--color-border)",
+                    }}
+                  >
+                    Corex v1.0.0
+                  </span>
+                </div>
               </div>
+
+              {/* Voice Overlay */}
+              <VoiceControlOverlay onCommand={handleVoiceCommand} />
             </div>
 
             {/* Right Sidebar - AI Chat */}
@@ -1555,6 +1620,7 @@ function App() {
           <LayoutProvider>
             <NotificationProvider>
               <AppContent />
+              <CollabOverlay />
               <ToastContainer />
             </NotificationProvider>
           </LayoutProvider>

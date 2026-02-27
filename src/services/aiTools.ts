@@ -24,6 +24,21 @@ export interface Tool {
 
 export const AVAILABLE_TOOLS: Tool[] = [
   {
+    name: 'delegate_task',
+    description: 'Devredilecek görevi başka bir uzmana (Architect, Developer, QA) aktarır. Görevin senin uzmanlık alanını aştığını veya mimari planlamadan kodlamaya geçiş yapmak gerektiğini düşündüğünde kullan.',
+    parameters: {
+      target_agent: { type: 'string', description: 'Architect, Developer veya QA' },
+      task_description: { type: 'string', description: 'O ajana verilen tam ve detaylı görev emri.' }
+    }
+  },
+  {
+    name: 'run_browser_test',
+    description: 'Opens a specific URL in the internal BrowserPanel for testing or visual inspection. Use this after running a web server to see the result. Emits an event to the frontend.',
+    parameters: {
+      url: { type: 'string', description: 'The URL to test (e.g. http://localhost:3000)' }
+    }
+  },
+  {
     name: 'run_terminal',
     description: 'Execute a terminal command and get the output. Use this to run npm, git, build commands, etc.',
     parameters: {
@@ -36,7 +51,7 @@ export const AVAILABLE_TOOLS: Tool[] = [
   },
   {
     name: 'read_file',
-    description: 'Read the contents of a file from the project',
+    description: 'Read the contents of a file from the project. DO NOT use this to check if a file exists before creating it in an empty project. If you are asked to create a new file or start a new project, use "write_file" directly.',
     parameters: {
       path: {
         type: 'string',
@@ -68,12 +83,34 @@ export const AVAILABLE_TOOLS: Tool[] = [
   },
   {
     name: 'list_files',
-    description: 'List files in a directory',
+    description: 'List directories and files in a specific folder (use glob_search to find specific files across the project).',
     parameters: {
       path: {
         type: 'string',
         description: 'Directory path (default: current directory)',
         required: false
+      }
+    }
+  },
+  {
+    name: 'glob_search',
+    description: 'Find files across the entire project matching a specific naming pattern.',
+    parameters: {
+      pattern: {
+        type: 'string',
+        description: 'Glob pattern to search (e.g. "*.ts", "**/components/*.tsx")',
+        required: true
+      }
+    }
+  },
+  {
+    name: 'grep_search',
+    description: 'Search for a specific string or regex pattern across the entire codebase. Excellent for finding where a function is called or where a variable is defined.',
+    parameters: {
+      query: {
+        type: 'string',
+        description: 'The regex or string query to search for (e.g. "AuthService", "function isValid\\(")',
+        required: true
       }
     }
   },
@@ -252,6 +289,22 @@ export async function executeTool(toolName: string, parameters: any): Promise<an
 
   try {
     switch (toolName) {
+      case 'delegate_task':
+        const { AgentService } = await import('./agentService');
+        AgentService.getInstance().setActiveRole(parameters.target_agent);
+        return {
+          status: 'success',
+          message: `Otonomi yetkisi ${parameters.target_agent} ajanına devredildi. Görev: ${parameters.task_description}`
+        };
+
+      case 'run_browser_test':
+        window.dispatchEvent(new CustomEvent('corex:open-browser', { detail: { url: parameters.url } }));
+        return {
+          status: 'success',
+          message: `Tarayıcı başlatıldı: ${parameters.url}. Vision özellikleri varsa ekran yakalama yapabilirim.`,
+          url: parameters.url
+        };
+
       case 'run_terminal':
       case 'run_command': // FIX-37 Alias
         return await runTerminal(parameters.command || parameters.cmd);
@@ -264,6 +317,12 @@ export async function executeTool(toolName: string, parameters: any): Promise<an
 
       case 'list_files':
         return await listFiles(parameters.path || '.');
+
+      case 'glob_search':
+        return await globSearch(parameters.pattern);
+
+      case 'grep_search':
+        return await grepSearch(parameters.query);
 
       case 'plan_task':
         return await planTask(parameters.task, parameters.context);
@@ -411,7 +470,7 @@ async function readFile(path: string): Promise<any> {
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'File read failed',
+      error: `Dosya bulunamadı (${path}). Eğer boş bir projedeysen veya dosyayı sıfırdan oluşturman gerekiyorsa, lütfen 'write_file' GÖREVİNİ KULLANARAK dosyayı (gerekli kodlarıyla birlikte) sen oluştur. Benden (kullanıcıdan) dosyayı oluşturmamı İSTEME!`,
       path
     };
   }
@@ -452,6 +511,58 @@ async function listFiles(path: string): Promise<any> {
   }
 }
 
+async function globSearch(pattern: string): Promise<any> {
+  try {
+    // Tauri backend'de find/glob komutu çalıştırıyoruz
+    // isWindows kontrolü
+    const isWindows = navigator.platform.toLowerCase().includes('win');
+    let command = '';
+
+    if (isWindows) {
+      command = `dir /b /s "${pattern.replace(/\*/g, '').replace('**', '')}"`; // Basit fallback
+    } else {
+      command = `find . -name "${pattern}" -not -path "*/node_modules/*" -not -path "*/.git/*"`;
+    }
+
+    const result = await runTerminal(command);
+    return {
+      success: result.success,
+      pattern,
+      results: result.stdout,
+      message: result.stdout ? 'Files found' : 'No files found matching the pattern',
+    };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
+}
+
+async function grepSearch(query: string): Promise<any> {
+  try {
+    const isWindows = navigator.platform.toLowerCase().includes('win');
+    // Ripgrep (rg) projelerde çok popüler ama garantili değil. 
+    // Temel grep / findstr fallback
+    const command = isWindows
+      ? `findstr /s /i /n /c:"${query.replace(/"/g, '""')}" *.* | findstr /v "node_modules \\.git"`
+      : `grep -rn -i --exclude-dir=node_modules --exclude-dir=.git "${query}" .`;
+
+    const result = await runTerminal(command);
+
+    // Uzun çıktıları sınırla
+    const stdout = result.stdout || '';
+    const limitCount = 5000;
+    const finalOut = stdout.length > limitCount ? stdout.substring(0, limitCount) + '\n...[TRUNCATED]' : stdout;
+
+    return {
+      success: result.success || finalOut.length > 0, // grep -1 dönebilir
+      query,
+      matches: finalOut,
+      message: finalOut ? 'Search completed' : 'No matches found',
+    };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
+}
+
 // Generate tool prompt for AI
 export async function getToolsPrompt(): Promise<string> {
   const mcpServers = await mcpService.listActiveServers();
@@ -463,10 +574,13 @@ export async function getToolsPrompt(): Promise<string> {
       for (const tool of tools) {
         const mcpToolName = `mcp_${server.name.replace(/\s+/g, '_')}_${tool.name}`;
         mcpToolsDescription += `
-**${mcpToolName}** (MCP: ${server.name})
-Description: ${tool.description}
-Parameters:
+### 🔌 ${mcpToolName} (MCP Server: ${server.name})
+**Description:** ${tool.description}
+**Parameters:** 
+\`\`\`json
 ${JSON.stringify(tool.inputSchema.properties || {}, null, 2)}
+\`\`\`
+**Required:** ${JSON.stringify(tool.inputSchema.required || [])}
 `;
       }
     } catch (e) {
@@ -475,46 +589,38 @@ ${JSON.stringify(tool.inputSchema.properties || {}, null, 2)}
   }
 
   return `
-🔧 AVAILABLE TOOLS:
+🛠️ KULLANILABİLİR ARAÇLAR (TOOLS):
 
-You can use these tools by responding in this format:
-TOOL: tool_name
-PARAMS: {"param1": "value1", "param2": "value2"}
+Aşağıdaki araçları kullanarak sistemde işlem yapabilirsin. Bir aracı kullanmak için SADECE aşağıdaki formatta yanıt ver:
+TOOL: arac_adi | PARAMS: {"parametre1": "değer1"}
 
-Core Tools:
+Önemli Kurallar:
+1. Tool çağırmadan önce Türkçe olarak KISA bir açıklama yap ("Dosyayı okuyorum", "Komutu çalıştırıyorum" vb).
+2. Sonra YENİ BİR SATIRDA yukarıdaki Tool formatını eksiksiz yaz.
+3. Aracı çağırdıktan sonra sonucun gelmesini bekle, peş peşe mesaj yazma.
+
+Kullanılabilir Araçlar:
 ${AVAILABLE_TOOLS.map(tool => `
-**${tool.name}**
-Description: ${tool.description}
-Parameters:
-${Object.entries(tool.parameters).map(([name, param]) =>
-    `  - ${name} (${param.type}${param.required ? ', required' : ''}): ${param.description}`
-  ).join('\n')}
-`).join('\n')}
+- **${tool.name}**: ${tool.description}
+  Parametreler: ${Object.entries(tool.parameters).map(([name, param]) =>
+    `\`${name}\` (${param.type}${param.required ? ', zorunlu' : ''}): ${param.description}`
+  ).join(', ')}
+`).join('')}
 
-MCP Tools (Extended Capabilities):
-${mcpToolsDescription || 'No active MCP tools available.'}
-
-Example usage:
-TOOL: run_terminal
-PARAMS: {"command": "npm install axios"}
-
-After using a tool, I will provide you with the result, and you can continue the conversation or use another tool.
+MCP Araçları (Eklentiler):
+${mcpToolsDescription || '_Şu an aktif eklenti aracı yok._'}
 `;
 }
 
 async function executeMcpTool(mcpToolName: string, parameters: any): Promise<any> {
   try {
-    // Parse mcp_serverName_toolName
     const parts = mcpToolName.split('_');
-    if (parts.length < 3) throw new Error('Invalid MCP tool name format');
+    if (parts.length < 3) throw new Error('Invalid MCP tool name format. Expected mcp_server_tool');
 
-    // Server name might contain underscores if it originally had spaces (we replaced them in prompt)
-    // But for now let's assume simple names or find the best match
     const activeServers = await mcpService.listActiveServers();
     let serverName = '';
     let toolName = '';
 
-    // Find server and tool
     for (const server of activeServers) {
       const sanitizedServerName = server.name.replace(/\s+/g, '_');
       if (mcpToolName.startsWith(`mcp_${sanitizedServerName}_`)) {
@@ -524,61 +630,98 @@ async function executeMcpTool(mcpToolName: string, parameters: any): Promise<any
       }
     }
 
-    if (!serverName) throw new Error(`MCP Server not found for tool: ${mcpToolName}`);
+    if (!serverName) {
+      const serverAttempt = parts[1];
+      throw new Error(`MCP Server "${serverAttempt}" is not active. Please start the server from the MCP panel first.`);
+    }
 
-    console.log(`🔌 Calling MCP Tool: ${serverName} -> ${toolName}`, parameters);
+    console.log(`🔌 [MCP] Calling ${serverName} -> ${toolName}`, parameters);
     const result = await mcpService.callTool(serverName, toolName, parameters);
 
     return {
       success: true,
-      result,
-      tool: mcpToolName
+      data: result,
+      server: serverName,
+      tool: toolName,
+      message: `Successfully executed ${toolName} on MCP server ${serverName}`
     };
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown MCP error';
+    console.error(`❌ [MCP Error]`, errorMessage);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'MCP Tool execution failed',
-      tool: mcpToolName
+      error: errorMessage,
+      tool: mcpToolName,
+      hint: "Make sure the MCP server is running and the tool parameters match the required schema."
     };
   }
 }
 
 
-// Parse AI response for tool calls
-export function parseToolCall(response: string): { toolName: string; parameters: any } | null {
+// Parse AI response for tool calls (MULTIPLE TOOLS SUPPORT)
+export function parseToolCalls(response: string): Array<{ toolName: string; parameters: any }> {
   try {
-    // Yeni format: TOOL:tool_name|PARAMS:{json}
-    const toolMatch = response.match(/TOOL:(\w+)\|PARAMS:({[\s\S]*?})/);
+    const results: Array<{ toolName: string; parameters: any }> = [];
 
-    if (toolMatch) {
-      const toolName = toolMatch[1];
-      const paramsJson = toolMatch[2];
+    // Gelişmiş string ayrıştırma (CSS içi süslü parantez gibi hataları önlemek için regex yerine manuel blok arama)
+    const regexToolMarker = /TOOL:\s*/;
+    if (!regexToolMarker.test(response)) {
+      return results; // TOOL etiketi hiç yoksa parse edilecek bir şey de yoktur
+    }
 
-      try {
-        const parameters = JSON.parse(paramsJson);
-        console.log(`✅ Tool parse edildi: ${toolName}`, parameters);
-        return { toolName, parameters };
-      } catch (jsonError) {
-        console.error('❌ JSON parse hatası:', paramsJson);
-        return null;
+    const sections = response.split(regexToolMarker);
+
+    for (let i = 1; i < sections.length; i++) { // 1'den başla çünkü section[0] ilk TOOL'dan önceki kısımdır
+      const section = sections[i];
+      const parts = section.split(/\|\s*PARAMS:\s*/);
+
+      if (parts.length >= 2) {
+        // İlk parça aracın ismini içerir. Örn: "write_file " -> "write_file", bazen sonrasında "\n" olabilir.
+        const toolName = parts[0].trim().split(/\s+/)[0];
+
+        // Geri kalanı parametrelerdir
+        const paramsStr = parts.slice(1).join("| PARAMS: ").trim();
+
+        // Parametreler bir JSON objesidir. 
+        // Döngüsel olarak (sondan başa) geçerli bir JSON arayalım
+        let parsed = false;
+        let currentStr = paramsStr;
+
+        while (!parsed && currentStr.length > 0) {
+          const lastBrace = currentStr.lastIndexOf('}');
+          const firstBrace = currentStr.indexOf('{');
+
+          if (lastBrace === -1 || firstBrace === -1 || lastBrace <= firstBrace) {
+            break; // Hiç geçerli süslü parantez kalmadıysa döngüden çık
+          }
+
+          const attemptJson = currentStr.substring(firstBrace, lastBrace + 1);
+          try {
+            // Kod blokları içinde verildiyse temizle
+            const clean = attemptJson.replace(/```json/gi, '').replace(/```/g, '').trim();
+            const parameters = JSON.parse(clean);
+
+            console.log(`✅ Tool parse edildi (${toolName}):`, parameters);
+            results.push({ toolName, parameters });
+            parsed = true; // Loop'tan çık
+          } catch (e) {
+            // JSON Parse patladıysa (örneğin sonuncu parantez JSON'un kendi parantezi değilse, 
+            // ya da içerideki bir CSS süslü parantezine denk geldiysek),
+            // en sondaki parantezi budayıp tekrar deniyoruz! (Backtracking mantığı)
+            currentStr = currentStr.substring(0, lastBrace);
+          }
+        }
+
+        if (!parsed) {
+          console.error(`❌ JSON parse tamamen başarısız oldu (${toolName})`);
+        }
       }
     }
 
-    // Eski format desteği: TOOL: ve PARAMS: ayrı satırlarda
-    const oldToolMatch = response.match(/TOOL:\s*(\w+)/);
-    const oldParamsMatch = response.match(/PARAMS:\s*({[\s\S]*?})/);
-
-    if (oldToolMatch && oldParamsMatch) {
-      const toolName = oldToolMatch[1];
-      const parameters = JSON.parse(oldParamsMatch[1]);
-      console.log(`✅ Tool parse edildi (eski format): ${toolName}`, parameters);
-      return { toolName, parameters };
-    }
-
-    return null;
+    return results;
   } catch (error) {
     console.error('❌ Tool parse hatası:', error);
-    return null;
+    return [];
   }
 }
 

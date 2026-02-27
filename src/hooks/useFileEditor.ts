@@ -8,6 +8,8 @@ import { createEmbedding } from "../services/embedding";
 import { saveProjectIndex } from "../services/db";
 import { FileIndex, Message } from "../types/index";
 import { smartContextBuilder } from "../services/smartContextBuilder";
+import { collabService } from "../services/collaborationService";
+import { useEffect } from "react";
 
 interface UseFileEditorOptions {
   projectPath: string;
@@ -34,6 +36,21 @@ export function useFileEditor({
   const [openTabs, setOpenTabs] = useState<Array<{ path: string; content: string }>>([]);
   const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
   const [selection, setSelection] = useState("");
+
+  // 🌐 Collaboration: Listen for remote edits
+  useEffect(() => {
+    const unsub = collabService.onRemoteEdit((file, content) => {
+      // If we are currently viewing this file and it's different, update it
+      // Note: This is an MVP implementation, in a real app we'd use CRDT/OT
+      if (file === selectedFile && content !== fileContent) {
+        setFileContent(content);
+        setOpenTabs(prev =>
+          prev.map(tab => (tab.path === file ? { ...tab, content } : tab))
+        );
+      }
+    });
+    return unsub;
+  }, [selectedFile, fileContent]);
 
 
   const openFile = useCallback(
@@ -159,6 +176,9 @@ export function useFileEditor({
       setOpenTabs(prev =>
         prev.map(tab => (tab.path === selectedFile ? { ...tab, content: value } : tab))
       );
+
+      // Broadcast to collaborators
+      collabService.broadcastEdit(selectedFile, value);
     },
     [selectedFile]
   );

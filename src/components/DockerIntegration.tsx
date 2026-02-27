@@ -1,22 +1,24 @@
 import { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { invoke } from '@tauri-apps/api/core';
 
 interface Container {
   id: string;
   name: string;
   image: string;
-  status: 'running' | 'stopped' | 'paused';
-  ports: string[];
-  created: number;
-  size: string;
+  status: string;
+  state: string;
+  ports?: string[];
+  created?: number;
+  size?: string;
 }
 
 interface Image {
   id: string;
   repository: string;
   tag: string;
-  size: string;
-  created: number;
+  size: number;
+  created?: number;
 }
 
 interface DockerCompose {
@@ -33,152 +35,80 @@ export default function DockerIntegration() {
   const [images, setImages] = useState<Image[]>([]);
   const [composeProjects, setComposeProjects] = useState<DockerCompose[]>([]);
   const [activeTab, setActiveTab] = useState<'containers' | 'images' | 'compose'>('containers');
-  const [isDockerRunning] = useState(true);
-  const [logs, setLogs] = useState<Record<string, string[]>>({});
+  const [isDockerRunning, setIsDockerRunning] = useState(false);
   const [selectedContainer, setSelectedContainer] = useState<string | null>(null);
+  const [logs] = useState<Record<string, string[]>>({}); // Placeholder for now
 
   useEffect(() => {
     loadDockerData();
   }, []);
 
-  const loadDockerData = () => {
-    // Mock Docker data
-    setContainers([
-      {
-        id: 'cont_1',
-        name: 'web-server',
-        image: 'nginx:latest',
-        status: 'running',
-        ports: ['80:8080', '443:8443'],
-        created: Date.now() - 86400000,
-        size: '142MB'
-      },
-      {
-        id: 'cont_2',
-        name: 'database',
-        image: 'postgres:13',
-        status: 'running',
-        ports: ['5432:5432'],
-        created: Date.now() - 172800000,
-        size: '314MB'
-      },
-      {
-        id: 'cont_3',
-        name: 'redis-cache',
-        image: 'redis:alpine',
-        status: 'stopped',
-        ports: ['6379:6379'],
-        created: Date.now() - 259200000,
-        size: '32MB'
-      }
-    ]);
+  const loadDockerData = async () => {
+    try {
+      const containerList = await invoke<Container[]>('docker_list_containers');
+      setContainers(containerList);
 
-    setImages([
-      {
-        id: 'img_1',
-        repository: 'nginx',
-        tag: 'latest',
-        size: '142MB',
-        created: Date.now() - 86400000
-      },
-      {
-        id: 'img_2',
-        repository: 'postgres',
-        tag: '13',
-        size: '314MB',
-        created: Date.now() - 172800000
-      },
-      {
-        id: 'img_3',
-        repository: 'redis',
-        tag: 'alpine',
-        size: '32MB',
-        created: Date.now() - 259200000
-      },
-      {
-        id: 'img_4',
-        repository: 'node',
-        tag: '18-alpine',
-        size: '118MB',
-        created: Date.now() - 345600000
-      }
-    ]);
+      const imageList = await invoke<Image[]>('docker_list_images');
+      setImages(imageList);
 
-    setComposeProjects([
-      {
-        id: 'comp_1',
-        name: 'web-app',
-        services: ['web', 'db', 'redis'],
-        status: 'running',
-        file: 'docker-compose.yml'
-      },
-      {
-        id: 'comp_2',
-        name: 'microservices',
-        services: ['api', 'auth', 'gateway', 'db'],
-        status: 'stopped',
-        file: 'docker-compose.prod.yml'
-      }
-    ]);
+      setIsDockerRunning(true);
 
-    // Mock logs
-    setLogs({
-      'cont_1': [
-        '2024-01-20 10:30:15 [info] Server started on port 80',
-        '2024-01-20 10:30:16 [info] Ready to accept connections',
-        '2024-01-20 10:31:22 [info] GET / 200 - 15ms',
-        '2024-01-20 10:32:45 [info] GET /api/health 200 - 3ms'
-      ],
-      'cont_2': [
-        '2024-01-20 10:29:30 [info] PostgreSQL Database directory appears to contain a database',
-        '2024-01-20 10:29:31 [info] Starting PostgreSQL 13.8',
-        '2024-01-20 10:29:32 [info] Database system is ready to accept connections'
-      ]
-    });
+      // Keep mock compose for now as it's not implemented in backend
+      setComposeProjects([
+        {
+          id: 'comp_1',
+          name: 'web-app',
+          services: ['web', 'db', 'redis'],
+          status: 'running',
+          file: 'docker-compose.yml'
+        }
+      ]);
+
+    } catch (error) {
+      console.error('Docker data load failed:', error);
+      setIsDockerRunning(false);
+    }
   };
 
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'running': return 'text-green-500';
-      case 'stopped': return 'text-red-500';
-      case 'paused': return 'text-yellow-500';
-      default: return 'text-gray-500';
-    }
+    const s = status.toLowerCase();
+    if (s.includes('up')) return 'text-green-500';
+    if (s.includes('exited')) return 'text-red-500';
+    if (s.includes('paused')) return 'text-yellow-500';
+    return 'text-gray-500';
   };
 
   const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'running': return '🟢';
-      case 'stopped': return '🔴';
-      case 'paused': return '🟡';
-      default: return '⚪';
+    const s = status.toLowerCase();
+    if (s.includes('up')) return '🟢';
+    if (s.includes('exited')) return '🔴';
+    if (s.includes('paused')) return '🟡';
+    return '⚪';
+  };
+
+  const runAction = async (id: string, action: string) => {
+    try {
+      await invoke('docker_container_action', { id, action });
+      await loadDockerData();
+    } catch (error) {
+      console.error(`Docker action ${action} failed:`, error);
+      alert(`Docker Hatası: ${error}`);
     }
   };
 
-  const startContainer = (id: string) => {
-    setContainers(prev => prev.map(c => 
-      c.id === id ? { ...c, status: 'running' } : c
-    ));
-  };
+  const startContainer = (id: string) => runAction(id, 'start');
+  const stopContainer = (id: string) => runAction(id, 'stop');
+  const restartContainer = (id: string) => runAction(id, 'restart');
+  const removeContainer = (id: string) => runAction(id, 'remove');
 
-  const stopContainer = (id: string) => {
-    setContainers(prev => prev.map(c => 
-      c.id === id ? { ...c, status: 'stopped' } : c
-    ));
-  };
-
-  const restartContainer = (id: string) => {
-    setContainers(prev => prev.map(c => 
-      c.id === id ? { ...c, status: 'running' } : c
-    ));
-  };
-
-  const removeContainer = (id: string) => {
-    setContainers(prev => prev.filter(c => c.id !== id));
-  };
-
-  const removeImage = (id: string) => {
-    setImages(prev => prev.filter(i => i.id !== id));
+  const removeImage = async (id: string) => {
+    try {
+      await invoke('docker_remove_image', { id });
+      await loadDockerData();
+    } catch (error) {
+      console.error('Failed to remove image:', error);
+      alert(`Image Hatası: ${error}`);
+    }
   };
 
   const pullImage = (repository: string, tag: string = 'latest') => {
@@ -186,7 +116,7 @@ export default function DockerIntegration() {
       id: `img_${Date.now()}`,
       repository,
       tag,
-      size: '0MB',
+      size: 0,
       created: Date.now()
     };
     setImages(prev => [...prev, newImage]);
@@ -240,7 +170,7 @@ export default function DockerIntegration() {
       {/* Header */}
       <div className="px-3 py-2 border-b border-[var(--color-border)]">
         <h2 className="text-lg font-semibold text-[var(--color-text)] mb-2">🐳 {t('activity.docker')}</h2>
-        
+
         {/* Docker Status */}
         <div className="flex items-center gap-2 mb-3">
           <span className={`w-2 h-2 rounded-full ${isDockerRunning ? 'bg-green-500' : 'bg-red-500'}`}></span>
@@ -255,15 +185,14 @@ export default function DockerIntegration() {
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-3 py-1 text-sm rounded transition-colors capitalize ${
-                activeTab === tab
-                  ? 'bg-[var(--color-primary)] text-white'
-                  : 'hover:bg-[var(--color-hover)]'
-              }`}
+              className={`px-3 py-1 text-sm rounded transition-colors capitalize ${activeTab === tab
+                ? 'bg-[var(--color-primary)] text-white'
+                : 'hover:bg-[var(--color-hover)]'
+                }`}
             >
-              {tab === 'containers' ? t('docker.containers') : 
-               tab === 'images' ? t('docker.images') : 
-               t('docker.compose')}
+              {tab === 'containers' ? t('docker.containers') :
+                tab === 'images' ? t('docker.images') :
+                  t('docker.compose')}
             </button>
           ))}
         </div>
@@ -279,7 +208,7 @@ export default function DockerIntegration() {
                 ➕ {t('docker.run')} Container
               </button>
             </div>
-            
+
             <div className="space-y-2">
               {containers.map(container => (
                 <div key={container.id} className="p-3 bg-[var(--color-background)] border border-[var(--color-border)] rounded-lg">
@@ -293,20 +222,20 @@ export default function DockerIntegration() {
                     </div>
                     <ContainerActions container={container} />
                   </div>
-                  
+
                   <div className="grid grid-cols-2 gap-4 text-sm text-[var(--color-textSecondary)]">
                     <div>
-                      <span className="font-medium">Status:</span> 
+                      <span className="font-medium">Status:</span>
                       <span className={getStatusColor(container.status)}> {container.status}</span>
                     </div>
                     <div>
                       <span className="font-medium">Size:</span> {container.size}
                     </div>
                     <div>
-                      <span className="font-medium">Ports:</span> {container.ports.join(', ')}
+                      <span className="font-medium">Ports:</span> {container.ports?.join(', ') || 'N/A'}
                     </div>
                     <div>
-                      <span className="font-medium">Created:</span> {new Date(container.created).toLocaleDateString()}
+                      <span className="font-medium">Created:</span> {container.created ? new Date(container.created).toLocaleDateString() : 'Unknown'}
                     </div>
                   </div>
                 </div>
@@ -333,7 +262,7 @@ export default function DockerIntegration() {
                 </button>
               </div>
             </div>
-            
+
             <div className="space-y-2">
               {images.map(image => (
                 <div key={image.id} className="p-3 bg-[var(--color-background)] border border-[var(--color-border)] rounded-lg">
@@ -341,13 +270,13 @@ export default function DockerIntegration() {
                     <div>
                       <h4 className="font-medium">{image.repository}:{image.tag}</h4>
                       <div className="flex gap-4 text-sm text-[var(--color-textSecondary)] mt-1">
-                        <span>Size: {image.size}</span>
-                        <span>Created: {new Date(image.created).toLocaleDateString()}</span>
+                        <span>Size: {(image.size / 1024 / 1024).toFixed(1)} MB</span>
+                        <span>Created: {image.created ? new Date(image.created).toLocaleDateString() : 'Unknown'}</span>
                       </div>
                     </div>
                     <div className="flex gap-1">
                       <button
-                        onClick={() => {/* Run container from image */}}
+                        onClick={() => {/* Run container from image */ }}
                         className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:opacity-80"
                         title="Run"
                       >
@@ -376,7 +305,7 @@ export default function DockerIntegration() {
                 ➕ Add Project
               </button>
             </div>
-            
+
             <div className="space-y-2">
               {composeProjects.map(project => (
                 <div key={project.id} className="p-3 bg-[var(--color-background)] border border-[var(--color-border)] rounded-lg">
@@ -390,20 +319,29 @@ export default function DockerIntegration() {
                     </div>
                     <div className="flex gap-1">
                       {project.status === 'stopped' ? (
-                        <button className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:opacity-80">
+                        <button
+                          onClick={() => invoke('docker_compose_action', { path: project.file, action: 'up' }).then(loadDockerData)}
+                          className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:opacity-80"
+                        >
                           ▶️ Up
                         </button>
                       ) : (
-                        <button className="px-2 py-1 bg-red-600 text-white rounded text-xs hover:opacity-80">
+                        <button
+                          onClick={() => invoke('docker_compose_action', { path: project.file, action: 'down' }).then(loadDockerData)}
+                          className="px-2 py-1 bg-red-600 text-white rounded text-xs hover:opacity-80"
+                        >
                           ⏹️ Down
                         </button>
                       )}
-                      <button className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:opacity-80">
+                      <button
+                        onClick={() => invoke('docker_compose_action', { path: project.file, action: 'restart' }).then(loadDockerData)}
+                        className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:opacity-80"
+                      >
                         🔄 Restart
                       </button>
                     </div>
                   </div>
-                  
+
                   <div className="text-sm text-[var(--color-textSecondary)]">
                     <span className="font-medium">Services:</span> {project.services.join(', ')}
                   </div>

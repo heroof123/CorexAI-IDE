@@ -1,4 +1,5 @@
 import { storage } from './storage';
+import { selectPromptMode, type AutonomyMeta } from '../prompts/corex_system_prompt';
 // import { invoke } from '@tauri-apps/api/core'; // ✅ FIXED: Use Rust backend (ŞU ANDA KULLANILMIYOR)
 // import { shouldIndexFile } from './embedding'; // Import from embedding service (ŞU ANDA KULLANILMIYOR)
 // import { cacheManager, generateAICacheKey } from './cache'; // Cache sistemi (gelecekte kullanılacak)
@@ -142,274 +143,8 @@ function pruneHistory(maxTokens: number): void {
   console.log(`📊 History: ${prunedHistory.length} mesaj, ~${totalTokens} token`);
 }
 
-// Enhanced system prompts with personality
-// 🌍 EVRENSEL: Tüm AI modelleri için geçerli (Qwen, Mistral, Llama, GPT, vb.)
-// 🔒 ROL SİSTEMİ KALDIRILDI - Tek genel prompt
-function getSystemPromptForRole(toolsPrompt: string): string {
-
-  // ⚠️ NOT: Roller tamamen kaldırıldı - Tek genel AI prompt'u kullanılır
-
-
-  // � Sistem dilini otomatik algıla
-  const systemLanguage = navigator.language || navigator.languages?.[0] || 'en';
-  const isTurkish = systemLanguage.startsWith('tr');
-
-  // 🎯 ÇOK GÜÇLÜ TÜRKÇE PROMPT (Qwen2.5 için optimize)
-  if (isTurkish) {
-    return `You are Corex AI - a Turkish coding assistant with automatic file creation capabilities.
-
-🚨 ZORUNLU KURALLAR - MUTLAKA TAKİP ET:
-1. HER ZAMAN TÜRKÇE yanıt ver
-2. ASLA İngilizce veya başka dil kullanma
-3. Türkçe dilbilgisi kurallarına uy
-4. Kullanıcı İngilizce yazsa bile sen TÜRKÇE cevap ver
-
-🇹🇷 TÜRKÇE DİL KURALLARI:
-
-**Zamirler:**
-- BEN (I): yapıyorum, veriyorum, inceledim
-- SİZ (You): yapıyorsunuz, istersiniz, istiyorsunuz
-
-**Doğru Örnekler:**
-✅ "Size yardımcı olabilirim" (I can help you)
-✅ "Bana ne yapmamı istersiniz?" (What do you want me to do?)
-✅ "Projenizi inceledim" (I examined your project)
-
-**Yanlış Örnekler (YAPMA):**
-❌ "Size yardımcı olabilirsiniz"
-❌ İngilizce kelimeler kullanmak
-❌ Çince karakterler kullanmak
-
-📋 PROJE ANALİZİ:
-- KISA bilgi ver (3-4 cümle)
-- Proje tipi + amaç + özellikler
-- Tüm dosyaları listeleme!
-
-💬 KONUŞMA STİLİ:
-- Samimi ve sıcak
-- Emoji kullan 😊
-- Kısa ve net
-- HER ZAMAN TÜRKÇE!
-
-📝 KOD BLOĞU FORMATI - ÇOK ÖNEMLİ:
-
-Kullanıcı kod/dosya istediğinde, KISA yanıt ver ve kod bloğu sağla:
-
-**Format:**
-\`\`\`language filename.ext
-kod buraya
-\`\`\`
-
-**Örnek:**
-
-Kullanıcı: "HTML hesap makinesi yap"
-
-AI: "Tamam, hesap makinesi oluşturuyorum 🧮
-
-🚨 CRITICAL RULES - MUST FOLLOW:
-1. ALWAYS respond in TURKISH language (Türkçe)
-2. NEVER use Chinese (中文) or English
-3. Use Turkish grammar correctly
-
-🇹🇷 TURKISH LANGUAGE RULES:
-
-**Pronouns:**
-- BEN (I): yapıyorum, veriyorum, inceledim
-- SİZ (You): yapıyorsunuz, istersiniz, istiyorsunuz
-
-**Correct Examples:**
-✅ "Size yardımcı olabilirim" (I can help you)
-✅ "Bana ne yapmamı istersiniz?" (What do you want me to do?)
-✅ "Projenizi inceledim" (I examined your project)
-
-**Wrong Examples (DON'T DO THIS):**
-❌ "Size yardımcı olabilirsiniz"
-❌ Using Chinese characters (中文)
-❌ Using English when Turkish is expected
-
-📋 PROJECT ANALYSIS:
-- Give BRIEF info (3-4 sentences)
-- Project type + purpose + features
-- DON'T list all files!
-
-💬 CONVERSATION STYLE:
-- Friendly and warm
-- Use emojis 😊
-- Short and clear
-- ALWAYS IN TURKISH!
-
-📝 CODE BLOCK FORMAT - VERY IMPORTANT:
-
-When user asks for code/files, respond BRIEFLY and provide code blocks:
-
-**Format:**
-\`\`\`language filename.ext
-code here
-\`\`\`
-
-**Example:**
-
-User: "HTML hesap makinesi yap"
-
-AI: "Tamam, hesap makinesi oluşturuyorum 🧮
-
-\`\`\`html calculator.html
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Hesap Makinesi</title>
-  <style>
-    body { font-family: Arial; text-align: center; padding: 50px; }
-    .calculator { display: inline-block; }
-    input { width: 200px; font-size: 20px; margin: 10px; }
-    button { width: 50px; height: 50px; font-size: 18px; margin: 5px; }
-  </style>
-</head>
-<body>
-  <div class="calculator">
-    <h1>Hesap Makinesi</h1>
-    <input type="text" id="display" readonly>
-    <div>
-      <button onclick="appendNumber('7')">7</button>
-      <button onclick="appendNumber('8')">8</button>
-      <button onclick="appendNumber('9')">9</button>
-      <button onclick="appendOperator('+')">+</button>
-    </div>
-    <div>
-      <button onclick="appendNumber('4')">4</button>
-      <button onclick="appendNumber('5')">5</button>
-      <button onclick="appendNumber('6')">6</button>
-      <button onclick="appendOperator('-')">-</button>
-    </div>
-    <div>
-      <button onclick="appendNumber('1')">1</button>
-      <button onclick="appendNumber('2')">2</button>
-      <button onclick="appendNumber('3')">3</button>
-      <button onclick="appendOperator('*')">*</button>
-    </div>
-    <div>
-      <button onclick="appendNumber('0')">0</button>
-      <button onclick="clearDisplay()">C</button>
-      <button onclick="calculateResult()">=</button>
-      <button onclick="appendOperator('/')">/</button>
-    </div>
-  </div>
-  
-  <script>
-    function appendNumber(number) {
-      document.getElementById('display').value += number;
-    }
-    
-    function appendOperator(operator) {
-      document.getElementById('display').value += operator;
-    }
-    
-    function clearDisplay() {
-      document.getElementById('display').value = '';
-    }
-    
-    function calculateResult() {
-      try {
-        // eval() yerine güvenli bir hesaplama mantığı kullanılmalı
-        const expression = document.getElementById('display').value;
-        // Basit bir hesaplama örneği (gerçek projede bir matematik kütüphanesi önerilir)
-        document.getElementById('display').value = Function('"use strict";return (' + expression + ')')();
-      } catch (e) {
-        document.getElementById('display').value = 'Hata';
-      }
-    }
-  </script>
-</body>
-</html>
-\`\`\`
-"
-
-**CRITICAL RULES:**
-1. Keep explanation SHORT (1-2 sentences)
-2. DON'T explain the code in detail
-3. DON'T list features
-4. Just say "Creating [filename]" and provide code
-5. Files will be created automatically!
-6. ALWAYS include filename after language: \`\`\`html calculator.html
-
-🤖 MULTI-AGENT WORKFLOW:
-
-You can act as different agents by using specialized tools:
-
-**PLANNER Agent** - Use plan_task tool
-- Break down complex tasks
-- Create step-by-step plans
-- Estimate time and resources
-
-**CODER Agent** - Use generate_code tool
-- Write clean, working code
-- Follow best practices
-- Add comments and documentation
-
-**TESTER Agent** - Use test_code tool
-- Run tests and builds
-- Verify functionality
-- Report issues
-
-**WORKFLOW EXAMPLE:**
-User: "Add a login button"
-
-Step 1 - PLAN:
-"Önce plan yapayım 📋"
-TOOL:plan_task|PARAMS:{"task":"Add login button","context":"React app"}
-
-Step 2 - CODE:
-"Şimdi kodu yazıyorum 💻"
-TOOL:generate_code|PARAMS:{"description":"Login button component","language":"typescript"}
-
-Step 3 - TEST:
-"Test ediyorum 🧪"
-TOOL:test_code|PARAMS:{"type":"build"}
-
-Step 4 - RESULT:
-"✅ Login butonu eklendi ve test edildi!"
-
-
-${toolsPrompt}
-
-🤖 AI ANALİZ ARAÇLARI - OTOMATİK KULLAN:
-
-Kullanıcı bir dosya hakkında soru sorduğunda veya istekte bulunduğunda, aşağıdaki araçları OTOMATIK olarak çağır (onay bekleme):
-
-| Kullanıcı ne der | Hangi aracı çağır |
-|---|---|
-| "bu dosyayı incele / kontrol et / analiz et" | code_review |
-| "kalite nedir / kaç puan alır" | code_review |
-| "dokümantasyon oluştur / belgele / yorum ekle" | generate_docs |
-| "test yaz / unit test oluştur" | generate_tests |
-| "refactor et / iyileştir / düzenle" | refactor_code |
-| "güvenlik açığı var mı / güvenli mi?" | security_scan |
-
-KULLANIM ÖRNEĞİ (tek adımda, açıklama yapma, direkt çağır):
-Kullanıcı: "src/App.tsx dosyasını incele"
-Sen: "Dosyayı inceliyorum 🔍"
-TOOL:code_review|PARAMS:{"path":"src/App.tsx"}
-
-KURALLAR:
-1. Önce kısa bir mesaj yaz (1 cümle), sonra TOOL çağrısını yap
-2. Dosya yolunu kullanıcının mesajından veya bağlamdan al
-3. Araç sonucu gelince sonucu Türkçe özetle
-4. Birden fazla araç gerekiyorsa sırasıyla çağır
-
-🚨 REMEMBER: Every response MUST be in Turkish (Türkçe)!`;
-  }
-
-  // 🌍 İngilizce fallback (diğer diller için)
-  return `You are Corex AI - a helpful coding assistant with automatic file creation capabilities.
-
-🚨 CRITICAL RULES:
-1. Be helpful and friendly
-2. Provide clear explanations
-3. Write clean, working code
-4. Use appropriate language based on user's input
-
-${toolsPrompt}`;
-}
+// ✅ System prompt artık corex_system_prompt.ts modülünden geliyor
+// getSystemPromptForRole → selectPromptMode olarak yenilendi
 
 
 // ✅ YENİ FONKSİYON - Rust backend kullanarak dosya tarama (ŞU ANDA KULLANILMIYOR)
@@ -421,7 +156,7 @@ ${toolsPrompt}`;
     // shouldIndexFile ile filtrele
     const filteredFiles = allFiles.filter(file => shouldIndexFile(file));
     
-    console.log(`📁 Toplam ${filteredFiles.length} dosya bulundu`);
+    console.log(`📁 Toplam ${ filteredFiles.length } dosya bulundu`);
     return filteredFiles;
   } catch (error) {
     console.error('❌ Dosya tarama hatası:', error);
@@ -466,17 +201,17 @@ ${toolsPrompt}`;
   
   // 3️⃣ Context oluştur
   let contextText = `# 📦 PROJE YAPISI\n\n`;
-  contextText += `**Proje Yolu:** ${projectPath}\n`;
-  contextText += `**Toplam Dosya:** ${allFiles.length}\n\n`;
+  contextText += `** Proje Yolu:** ${ projectPath } \n`;
+  contextText += `** Toplam Dosya:** ${ allFiles.length } \n\n`;
   
   contextText += `## 📊 Dosya Dağılımı\n\n`;
-  contextText += `- **TypeScript:** ${filesByType.typescript.length} dosya\n`;
-  contextText += `- **JavaScript:** ${filesByType.javascript.length} dosya\n`;
-  contextText += `- **Rust:** ${filesByType.rust.length} dosya\n`;
-  contextText += `- **Config:** ${filesByType.config.length} dosya\n`;
-  contextText += `- **Markdown:** ${filesByType.markdown.length} dosya\n`;
-  contextText += `- **Styles:** ${filesByType.styles.length} dosya\n`;
-  contextText += `- **Diğer:** ${filesByType.other.length} dosya\n\n`;
+  contextText += `- ** TypeScript:** ${ filesByType.typescript.length } dosya\n`;
+  contextText += `- ** JavaScript:** ${ filesByType.javascript.length } dosya\n`;
+  contextText += `- ** Rust:** ${ filesByType.rust.length } dosya\n`;
+  contextText += `- ** Config:** ${ filesByType.config.length } dosya\n`;
+  contextText += `- ** Markdown:** ${ filesByType.markdown.length } dosya\n`;
+  contextText += `- ** Styles:** ${ filesByType.styles.length } dosya\n`;
+  contextText += `- ** Diğer:** ${ filesByType.other.length } dosya\n\n`;
   
   // 4️⃣ Klasör yapısını göster
   contextText += `## 📂 Klasör Yapısı\n\n`;
@@ -498,7 +233,7 @@ ${toolsPrompt}`;
   const sortedFolders = Array.from(folderMap.keys()).sort();
   sortedFolders.forEach(folder => {
     const files = folderMap.get(folder)!;
-    contextText += `\n**${folder}/** (${files.length} dosya)\n`;
+    contextText += `\n ** ${ folder }/** (${files.length} dosya)\n`;
     files.slice(0, 15).forEach(f => contextText += `  - ${f}\n`);
     if (files.length > 15) {
       contextText += `  ... ve ${files.length - 15} dosya daha\n`;
@@ -578,9 +313,18 @@ export async function sendToAI(
     const { getToolsPrompt } = await import('./aiTools');
     const toolsPrompt = await getToolsPrompt();
 
-    // Get system prompt
-    const systemPrompt = getSystemPromptForRole(toolsPrompt);
-
+    // 🧠 CorexA Ultimate System Prompt — autonomy + verbosity + proje bağlamıyla
+    const { getAutonomyConfig: getAutonomyCfg } = await import('./autonomy');
+    const autonomyConfig = getAutonomyCfg();
+    const corexMeta: AutonomyMeta = {
+      level: autonomyConfig.level as 1 | 2 | 3 | 4 | 5,
+      verbosity: outputMode === 'brief' ? 'concise' : outputMode === 'detailed' ? 'detailed' : 'balanced',
+      modelName: getModelIdForRole(),
+      projectPath: conversationContext.projectContext?.name || undefined,
+      currentFile: conversationContext.recentFiles?.[0] || undefined,
+    };
+    const systemPrompt = selectPromptMode(message, toolsPrompt, corexMeta);
+    console.log('🧠 CorexA System Prompt seçildi (level:', corexMeta.level, '| verbosity:', corexMeta.verbosity, ')');
 
     // Add system prompt if this is the first message
     if (conversationContext.history.length === 0) {
@@ -641,6 +385,38 @@ export async function sendToAI(
       console.log('📌 Özet history\'ye eklendi');
     }
 
+    // 🧠 RAG (Vektörel Kod Hafızası) Entegrasyonu
+    try {
+      const { ragService } = await import('./ragService');
+      // Kullanıcının mesajındaki niyetine göre ilk 4 semantik parçayı bul
+      const vectorResults = await ragService.search(message, 4);
+
+      if (vectorResults && vectorResults.length > 0) {
+        console.log(`🔍 RAG: ${vectorResults.length} adet kod bağlamı hafızadan çekildi.`);
+
+        let ragContextText = "🧠 PROJE HAFIZASI (Vektörel Arama Sonuçları):\n\nBu bağlam sana projenin kod tabanından getirilmiştir. Lütfen yanıt verirken aşağıdaki dosyaların varlığını ve içeriğini bilerek hareket et:\n\n";
+
+        vectorResults.forEach(res => {
+          // Token şişmemesi için her dosyanın max 1500 karakterini al
+          ragContextText += `--- DOSYA: ${res.file_path} ---\n\`\`\`\n${res.content.substring(0, 1500)}\n\`\`\`\n\n`;
+        });
+
+        // Bu veriyi hafızayı şişirmemek için ASIL HISTORY dizisine DEĞİL, sadece bu anlık isteğe giden historyWithSummary kopyasına ekliyoruz.
+        const ragMessage = {
+          role: "system",
+          content: ragContextText,
+          timestamp: Date.now(),
+          tokens: estimateTokens(ragContextText)
+        };
+
+        // Kullanıcı mesajından (en son mesaj) hemen önce araya yerleştir
+        const userMsgIndex = historyWithSummary.length - 1;
+        historyWithSummary.splice(userMsgIndex, 0, ragMessage);
+      }
+    } catch (ragError) {
+      console.warn("⚠️ RAG araması yapılamadı (Vektör DB henüz hazır olmayabilir):", ragError);
+    }
+
     // Prepare conversation history for AI (only role and content)
     const historyForAI = historyWithSummary.map(msg => ({
       role: msg.role,
@@ -661,96 +437,72 @@ export async function sendToAI(
     ]);
 
     // 🔧 TOOL SYSTEM - Parse and execute tools
-    const { parseToolCall, executeTool } = await import('./aiTools');
-    const { requiresApproval, getAutonomyConfig } = await import('./autonomy');
+    const { parseToolCalls, executeTool } = await import('./aiTools');
+    const { requiresApproval } = await import('./autonomy');
 
-    let toolCall = parseToolCall(response);
+    let toolCalls = parseToolCalls(response);
     let toolIterations = 0;
     const maxToolIterations = 5; // Sonsuz döngü önleme
 
-    while (toolCall && toolIterations < maxToolIterations) {
+    while (toolCalls.length > 0 && toolIterations < maxToolIterations) {
       toolIterations++;
-      console.log(`🔧 Tool çağrısı tespit edildi (${toolIterations}/${maxToolIterations}):`, toolCall.toolName);
+      console.log(`🔧 Çoklu Tool Çağrısı tespit edildi (${toolIterations}/${maxToolIterations}): ${toolCalls.length} adet araç bulundu. =>`, toolCalls.map(t => t.toolName).join(', '));
 
-      // 🎚️ AUTONOMY CHECK - Onay gerekli mi?
-      const config = getAutonomyConfig();
-      const needsApproval = requiresApproval(toolCall.toolName, toolCall.parameters, config);
+      const sessionResults: string[] = [];
+      for (const toolCall of toolCalls) {
+        // 🎚️ AUTONOMY CHECK - Onay gerekli mi? (corexMeta.level zaten yukarıda tanımlı)
+        const config = autonomyConfig;
+        const needsApproval = requiresApproval(toolCall.toolName, toolCall.parameters, config);
 
-      if (needsApproval && onToolApprovalRequest) {
-        console.log('🔐 Tool onay gerektiriyor:', toolCall.toolName);
+        let executionResult: any = null;
+        let isApproved = true;
 
-        // Kullanıcıdan onay iste
-        const approved = await onToolApprovalRequest(toolCall.toolName, toolCall.parameters);
+        if (needsApproval && onToolApprovalRequest) {
+          console.log('🔐 Tool onay gerektiriyor:', toolCall.toolName);
+          const approved = await onToolApprovalRequest(toolCall.toolName, toolCall.parameters);
 
-        if (!approved) {
-          console.log('❌ Tool reddedildi:', toolCall.toolName);
-
-          // Tool reddedildi mesajını history'ye ekle
-          const rejectionMessage = `🚫 Tool reddedildi: ${toolCall.toolName}`;
-          conversationContext.history.push({
-            role: "user",
-            content: rejectionMessage,
-            timestamp: Date.now(),
-            tokens: estimateTokens(rejectionMessage)
-          });
-
-          // 🆕 Rejection mesajı da sayılır
-          conversationContext.messagesSinceLastSummary++;
-
-          // AI'ya reddetme bilgisini gönder
-          const continuePrompt = `Tool "${toolCall.toolName}" kullanıcı tarafından reddedildi. Alternatif bir yol öner veya kullanıcıya açıkla.`;
-          const historyForAI2 = conversationContext.history.map(msg => ({
-            role: msg.role,
-            content: msg.content
-          }));
-
-          response = await Promise.race([
-            callAI(continuePrompt, modelId, historyForAI2),
-            timeoutPromise
-          ]);
-
-          // Yeni response'da başka tool var mı kontrol et
-          toolCall = parseToolCall(response);
-          continue; // Döngüye devam et
-        }
-
-        console.log('✅ Tool onaylandı:', toolCall.toolName);
-      } else {
-        console.log('🚀 Tool otomatik çalıştırılıyor (Level ' + config.level + '):', toolCall.toolName);
-      }
-
-      // 🌊 Tool execution başladı - callback çağır
-      if (onToolExecution) {
-        onToolExecution(toolCall.toolName, 'running');
-      }
-
-      // Tool'u çalıştır
-      const toolResult = await executeTool(toolCall.toolName, toolCall.parameters);
-      console.log('🔧 Tool sonucu:', toolResult);
-
-      // 🌊 Tool execution tamamlandı - callback çağır
-      if (onToolExecution) {
-        if (toolResult.success) {
-          onToolExecution(toolCall.toolName, 'completed', toolResult);
+          if (!approved) {
+            console.log('❌ Tool reddedildi:', toolCall.toolName);
+            isApproved = false;
+            executionResult = { success: false, error: 'User rejected the tool execution.' };
+          } else {
+            console.log('✅ Tool onaylandı:', toolCall.toolName);
+          }
         } else {
-          onToolExecution(toolCall.toolName, 'failed', toolResult, toolResult.error);
+          console.log('🚀 Tool otomatik çalıştırılıyor:', toolCall.toolName);
         }
+
+        if (isApproved) {
+          if (onToolExecution) onToolExecution(toolCall.toolName, 'running');
+
+          executionResult = await executeTool(toolCall.toolName, toolCall.parameters);
+          console.log(`🔧 Tool sonucu (${toolCall.toolName}):`, executionResult);
+
+          if (onToolExecution) {
+            if (executionResult.success) {
+              onToolExecution(toolCall.toolName, 'completed', executionResult);
+            } else {
+              onToolExecution(toolCall.toolName, 'failed', executionResult, executionResult.error);
+            }
+          }
+        }
+
+        sessionResults.push(`🔧 Tool Result (${toolCall.toolName}):\n${JSON.stringify(executionResult, null, 2)}`);
       }
 
-      // Tool sonucunu history'ye ekle
-      const toolResultMessage = `🔧 Tool Result (${toolCall.toolName}):\n${JSON.stringify(toolResult, null, 2)}`;
+      // Tüm tool sonuçlarını tek mesaj olarak history'ye ekle
+      const combinedToolResultMessage = sessionResults.join('\n\n');
       conversationContext.history.push({
         role: "user",
-        content: toolResultMessage,
+        content: combinedToolResultMessage,
         timestamp: Date.now(),
-        tokens: estimateTokens(toolResultMessage)
+        tokens: estimateTokens(combinedToolResultMessage)
       });
 
-      // 🆕 Tool mesajı da sayılır
       conversationContext.messagesSinceLastSummary++;
 
-      // AI'ya tool sonucunu gönder ve devam et
-      const continuePrompt = "Tool çalıştırıldı. Sonucu yukarıda görebilirsin. Devam et.";
+      // AI'ya tüm tool sonuçlarını gönder ve devam et
+      const continuePrompt = "Araçlar(Tools) çalıştırıldı. Sonuçları yukarıda görebilirsin. Duruma göre adım adım ilerlemeye devam et.";
       const historyForAI2 = conversationContext.history.map(msg => ({
         role: msg.role,
         content: msg.content
@@ -762,7 +514,7 @@ export async function sendToAI(
       ]);
 
       // Yeni response'da başka tool var mı kontrol et
-      toolCall = parseToolCall(response);
+      toolCalls = parseToolCalls(response);
     }
 
     if (toolIterations >= maxToolIterations) {
@@ -904,7 +656,7 @@ export function getModelIdForRole(): string {
   const savedProviders = localStorage.getItem('corex-ai-providers');
   if (!savedProviders) {
     console.warn('⚠️ Provider bulunamadı');
-    return "default-chat"; // Fallback instead of crash
+    return "default"; // Fallback instead of crash
   }
 
   try {
@@ -1080,7 +832,9 @@ function analyzeUserIntent(message: string): string {
     lowerMessage.includes('edit') || lowerMessage.includes('modify') || lowerMessage.includes('update')) {
     return 'edit';
   } else if (lowerMessage.includes('açıkla') || lowerMessage.includes('anlat') || lowerMessage.includes('nedir') ||
-    lowerMessage.includes('explain') || lowerMessage.includes('what is') || lowerMessage.includes('how')) {
+    lowerMessage.includes('explain') || lowerMessage.includes('what is') || lowerMessage.includes('how') ||
+    lowerMessage.includes('yardım') || lowerMessage.includes('nasıl') || lowerMessage.includes('göster') ||
+    lowerMessage.includes('fikir') || lowerMessage.includes('öneri')) {
     return 'explain';
   } else if (lowerMessage.includes('bul') || lowerMessage.includes('ara') || lowerMessage.includes('search') ||
     lowerMessage.includes('find')) {

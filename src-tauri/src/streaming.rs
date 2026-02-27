@@ -76,7 +76,7 @@ pub async fn chat_with_streaming(
     let mut decoder = encoding_rs::UTF_8.new_decoder();
     let mut response_tokens = Vec::new();
 
-    for i in 0..max_tokens {
+    for _i in 0..max_tokens {
         let candidates = context.candidates();
         
         // Simple sampling logic (reused from gguf.rs basics)

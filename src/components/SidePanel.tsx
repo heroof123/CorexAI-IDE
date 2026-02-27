@@ -1,6 +1,5 @@
 import { useState } from "react";
 import FileManager from "./FileManager";
-import ExtensionsManager from "./ExtensionsManager";
 import WorkspaceManager from "./WorkspaceManager";
 import DatabaseBrowser from "./DatabaseBrowser";
 import ApiTesting from "./ApiTesting";
@@ -16,6 +15,8 @@ import SecurityFortress from "./SecurityFortress";
 import ModelRoulette from "./ModelRoulette";
 import PluginMarketplace from "./PluginMarketplace";
 import InteractiveAcademy from "./InteractiveAcademy";
+import { AIDebugAdvisor } from "./AIDebugAdvisor";
+import { aiDebugService } from "../services/aiDebugService";
 
 interface SidePanelProps {
   activeView: string;
@@ -143,7 +144,7 @@ export default function SidePanel({
             <div className="text-sm text-[var(--color-textSecondary)] mb-2">
               {searchResults.length} results in {searchResults.length} files
             </div>
-            {searchResults.map((result, index) => (
+            {searchResults.map((result: any, index: number) => (
               <div key={index} className="border border-[var(--color-border)] rounded">
                 <div className="px-2 py-1.5 bg-[var(--color-background)] border-b border-[var(--color-border)]">
                   <button
@@ -327,6 +328,22 @@ export default function SidePanel({
             </div>
           </div>
         </div>
+
+        {/* AI Debug Advisor Integration */}
+        <AIDebugAdvisor />
+
+        {/* Trigger Mock Debug (for demo) */}
+        <div className="mt-8 border-t border-[var(--color-border)] pt-4">
+          <button
+            onClick={() => aiDebugService.triggerMockBreakpoint(selectedFile || "App.tsx", 124)}
+            className="w-full py-2 border border-indigo-500/30 text-indigo-400 text-[10px] font-bold uppercase tracking-widest rounded hover:bg-indigo-500/10 transition-all"
+          >
+            AI Debug Testini Başlat
+          </button>
+          <p className="text-[9px] text-neutral-500 mt-2 text-center">
+            Gerçek bir breakpoint simülasyonu yapar.
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -412,7 +429,8 @@ export default function SidePanel({
       case "run-debug":
         return renderRunDebugView();
       case "extensions":
-        return <ExtensionsManager isVisible={true} />;
+      case "marketplace":
+        return <PluginMarketplace />;
       case "accounts":
         return <AccountsPanel />;
       case "settings":
@@ -440,10 +458,8 @@ export default function SidePanel({
         return <SecurityFortress fileIndex={fileIndex} onFileClick={onFileSelect} />;
       case "model-roulette":
         return <ModelRoulette />;
-      case "marketplace":
-        return <PluginMarketplace />;
       case "academy":
-        return <InteractiveAcademy />;
+        return <InteractiveAcademy selectedFile={selectedFile} />;
       case "compare":
         return (
           <div className="p-4 text-xs text-neutral-400">

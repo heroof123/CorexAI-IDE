@@ -8,6 +8,7 @@ import { Message, CodeAction } from "../types/index";
 import { TaskProgressCard } from "./TaskProgressCard";
 import DiffViewer from "./Diffviewer";
 import SmartSuggestions from "./SmartSuggestions";
+import LivePreview from "./LivePreview";
 
 interface ChatPanelProps {
   messages: Message[];
@@ -45,7 +46,10 @@ function copyToClipboard(text: string) {
 
 // ─── Kod Bloğu (syntax highlight + kopyala butonu) ───────────────────────────
 function CodeBlock({ language, children }: { language: string; children: string }) {
+  const isPreviewable = ["html", "css", "javascript", "typescript", "jsx", "tsx", "react"].includes(language?.toLowerCase() || "");
+  const [showPreview, setShowPreview] = useState(false);
   const [copied, setCopied] = useState(false);
+
   const handleCopy = () => {
     copyToClipboard(children);
     setCopied(true);
@@ -74,37 +78,61 @@ function CodeBlock({ language, children }: { language: string; children: string 
         <span style={{ fontSize: 10, color: "#64748b", fontFamily: "monospace" }}>
           {language || "code"}
         </span>
-        <button
-          onClick={handleCopy}
-          style={{
-            fontSize: 10,
-            padding: "1px 7px",
-            borderRadius: 4,
-            border: "1px solid #334155",
-            background: "transparent",
-            color: copied ? "#22c55e" : "#94a3b8",
-            cursor: "pointer",
-            transition: "color 0.2s",
-          }}
-        >
-          {copied ? "✓ Kopyalandı" : "Kopyala"}
-        </button>
+        <div style={{ display: "flex", gap: 6 }}>
+          {isPreviewable && (
+            <button
+              onClick={() => setShowPreview(!showPreview)}
+              style={{
+                fontSize: 10,
+                padding: "1px 7px",
+                borderRadius: 4,
+                border: "1px solid #334155",
+                background: showPreview ? "#3b82f6" : "transparent",
+                color: showPreview ? "white" : "#94a3b8",
+                cursor: "pointer",
+              }}
+            >
+              {showPreview ? "Kod Gör" : "Önizle"}
+            </button>
+          )}
+          <button
+            onClick={handleCopy}
+            style={{
+              fontSize: 10,
+              padding: "1px 7px",
+              borderRadius: 4,
+              border: "1px solid #334155",
+              background: "transparent",
+              color: copied ? "#22c55e" : "#94a3b8",
+              cursor: "pointer",
+              transition: "color 0.2s",
+            }}
+          >
+            {copied ? "✓ Kopyalandı" : "Kopyala"}
+          </button>
+        </div>
       </div>
-      <SyntaxHighlighter
-        language={language || "text"}
-        style={vscDarkPlus}
-        customStyle={{
-          margin: 0,
-          borderRadius: "0 0 6px 6px",
-          fontSize: 11,
-          padding: "10px 12px",
-          border: "1px solid #1e293b",
-          borderTop: "none",
-        }}
-        wrapLongLines
-      >
-        {children}
-      </SyntaxHighlighter>
+      {showPreview && isPreviewable ? (
+        <div style={{ height: 350, marginTop: 0 }}>
+          <LivePreview code={children} showControls={false} className="rounded-t-none border-t-0" />
+        </div>
+      ) : (
+        <SyntaxHighlighter
+          language={language || "text"}
+          style={vscDarkPlus}
+          customStyle={{
+            margin: 0,
+            borderRadius: "0 0 6px 6px",
+            fontSize: 11,
+            padding: "10px 12px",
+            border: "1px solid #1e293b",
+            borderTop: "none",
+          }}
+          wrapLongLines
+        >
+          {children}
+        </SyntaxHighlighter>
+      )}
     </div>
   );
 }
@@ -164,12 +192,12 @@ function ToolResultCard({
     return (
       <div
         style={{
-          marginTop: 6,
-          padding: "6px 10px",
+          marginTop: 4,
+          padding: "4px 8px",
           background: "#ef444415",
           border: "1px solid #ef444430",
           borderRadius: 6,
-          fontSize: 11,
+          fontSize: 10,
           color: "#ef4444",
         }}
       >
@@ -204,10 +232,10 @@ function ToolResultCard({
             {result.score}
           </span>
           <div>
-            <div style={{ fontWeight: 600, color: "#e2e8f0" }}>
+            <div style={{ fontWeight: 600, color: "#e2e8f0", fontSize: 10 }}>
               {result.path?.split(/[/\\]/).pop()}
             </div>
-            <div style={{ color: "#94a3b8", fontSize: 10 }}>
+            <div style={{ color: "#94a3b8", fontSize: 9 }}>
               {result.issueCount} sorun · {result.suggestions?.length || 0} öneri
             </div>
           </div>
@@ -472,18 +500,19 @@ function ToolResultCard({
       >
         <div
           style={{
-            padding: "8px 12px",
+            padding: "6px 10px",
             background: "#1e293b",
             color: "#e2e8f0",
             fontWeight: 600,
             display: "flex",
             alignItems: "center",
-            gap: 8,
+            gap: 6,
+            fontSize: 10
           }}
         >
-          <span>🔍</span> Web Araması:{" "}
+          <span>🔍</span> Arama:{" "}
           <i style={{ color: "#94a3b8", fontWeight: 400 }}>{result.query}</i>
-          <span style={{ marginLeft: "auto", fontSize: 10, color: "#64748b" }}>
+          <span style={{ marginLeft: "auto", fontSize: 9, color: "#64748b" }}>
             {result.resultCount || 0} sonuç
           </span>
         </div>
@@ -665,6 +694,89 @@ function ToolResultCard({
     );
   }
 
+  if (toolName.startsWith("mcp_")) {
+    return (
+      <div
+        style={{
+          marginTop: 8,
+          background: "#0f172a",
+          border: "1px solid #1e293b",
+          borderRadius: 8,
+          overflow: "hidden",
+          fontSize: 11,
+        }}
+      >
+        <div
+          style={{
+            padding: "8px 12px",
+            background: "linear-gradient(90deg,#1e293b,#0f172a)",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 6,
+              background: "#3b82f615",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#3b82f6",
+              fontSize: 14,
+            }}
+          >
+            🔌
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, color: "#e2e8f0", fontSize: 10, opacity: 0.7 }}>
+              MCP SERVER: {result.server || toolName.split("_")[1]}
+            </div>
+            <div style={{ fontWeight: 700, color: "#fff", fontSize: 12 }}>
+              {result.tool || toolName.split("_").slice(2).join("_")}
+            </div>
+          </div>
+          <div
+            style={{
+              padding: "2px 8px",
+              background: "#22c55e15",
+              color: "#22c55e",
+              borderRadius: 4,
+              fontSize: 10,
+              fontWeight: 600,
+            }}
+          >
+            SUCCESS
+          </div>
+        </div>
+
+        {result.message && (
+          <div style={{ padding: "6px 12px", color: "#94a3b8", borderBottom: "1px solid #1e293b" }}>
+            {result.message}
+          </div>
+        )}
+
+        <div style={{ padding: "8px 12px" }}>
+          <pre style={{
+            background: "#00000040",
+            padding: 8,
+            borderRadius: 4,
+            overflow: "auto",
+            maxHeight: 200,
+            fontSize: 10,
+            color: "#cbd5e1"
+          }}>
+            {typeof result.data === 'string'
+              ? result.data
+              : JSON.stringify(result.data, null, 2)}
+          </pre>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <details style={{ marginTop: 6, fontSize: 10 }}>
       <summary style={{ cursor: "pointer", color: "#64748b" }}>Sonuç</summary>
@@ -788,7 +900,16 @@ const MessageItem = memo(
                   </svg>
                 </div>
               )}
-              <span className="text-[10px] font-mono opacity-70">{msg.toolExecution.toolName}</span>
+              <span className="text-[10px] font-mono opacity-70">
+                {msg.toolExecution.toolName.startsWith('mcp_') ? (
+                  <>
+                    <span className="text-blue-400 font-bold">🔌 MCP</span>{' '}
+                    {msg.toolExecution.toolName.split('_').slice(1).join(' > ')}
+                  </>
+                ) : (
+                  msg.toolExecution.toolName
+                )}
+              </span>
               {msg.toolExecution.endTime && (
                 <span className="text-[10px] opacity-50">
                   ({((msg.toolExecution.endTime - msg.toolExecution.startTime) / 1000).toFixed(1)}s)

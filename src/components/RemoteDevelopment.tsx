@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-// import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core';
 
 interface RemoteConnection {
   id: string;
@@ -18,7 +18,7 @@ interface RemoteConnection {
 interface RemoteFile {
   name: string;
   path: string;
-  type: 'file' | 'directory';
+  file_type: 'file' | 'directory';
   size?: number;
   modified?: number;
   permissions?: string;
@@ -38,7 +38,7 @@ export default function RemoteDevelopment({ isOpen, onClose, onOpenRemoteFile }:
   const [currentPath, setCurrentPath] = useState('/');
   const [isConnecting, setIsConnecting] = useState(false);
   const [showConnectionForm, setShowConnectionForm] = useState(false);
-  
+
   // Connection form state
   const [newConnection, setNewConnection] = useState({
     name: '',
@@ -135,23 +135,28 @@ export default function RemoteDevelopment({ isOpen, onClose, onOpenRemoteFile }:
   const connectToRemote = async (connection: RemoteConnection) => {
     setIsConnecting(true);
     try {
-      // This would be implemented in the Rust backend
-      // For now, we'll simulate the connection
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
+      // Real SSH connection call
+      await invoke('remote_ssh_connect', {
+        host: connection.host,
+        port: connection.port,
+        username: connection.username,
+        password: connection.password || null,
+        keyPath: connection.keyPath || null,
+      });
+
       const updatedConnection = { ...connection, connected: true, lastConnected: Date.now() };
-      const updatedConnections = connections.map(conn => 
+      const updatedConnections = connections.map(conn =>
         conn.id === connection.id ? updatedConnection : conn
       );
       setConnections(updatedConnections);
       setSelectedConnection(updatedConnection);
-      
+
       // Load remote files
       await loadRemoteFiles(updatedConnection, connection.workingDirectory);
-      
+
     } catch (error) {
       console.error('Connection failed:', error);
-      alert(`Connection failed: ${error}`);
+      alert(`Bağlantı Hatası: ${error}`);
     } finally {
       setIsConnecting(false);
     }
@@ -159,11 +164,11 @@ export default function RemoteDevelopment({ isOpen, onClose, onOpenRemoteFile }:
 
   const disconnectFromRemote = (connection: RemoteConnection) => {
     const updatedConnection = { ...connection, connected: false };
-    const updatedConnections = connections.map(conn => 
+    const updatedConnections = connections.map(conn =>
       conn.id === connection.id ? updatedConnection : conn
     );
     setConnections(updatedConnections);
-    
+
     if (selectedConnection?.id === connection.id) {
       setSelectedConnection(null);
       setRemoteFiles([]);
@@ -171,49 +176,32 @@ export default function RemoteDevelopment({ isOpen, onClose, onOpenRemoteFile }:
   };
 
   const loadRemoteFiles = async (connection: RemoteConnection, path: string) => {
-    // Mock implementation - connection parameter used for future implementation
-    console.log('Loading files from:', connection.name, 'at path:', path);
+    console.log('Fetching remote files from:', path);
     try {
-      // This would be implemented in the Rust backend
-      // For now, we'll simulate file listing
-      const mockFiles: RemoteFile[] = [
-        {
+      const files = await invoke<RemoteFile[]>('remote_ssh_list_dir', {
+        host: connection.host,
+        port: connection.port,
+        username: connection.username,
+        password: connection.password || null,
+        keyPath: connection.keyPath || null,
+        path: path
+      });
+
+      // Add '..' for navigation if not root
+      if (path !== '/') {
+        const parentPath = path.split('/').slice(0, -1).join('/') || '/';
+        files.unshift({
           name: '..',
-          path: path === '/' ? '/' : path.split('/').slice(0, -1).join('/') || '/',
-          type: 'directory'
-        },
-        {
-          name: 'src',
-          path: `${path}/src`,
-          type: 'directory',
-          modified: Date.now() - 86400000
-        },
-        {
-          name: 'package.json',
-          path: `${path}/package.json`,
-          type: 'file',
-          size: 1024,
-          modified: Date.now() - 3600000
-        },
-        {
-          name: 'README.md',
-          path: `${path}/README.md`,
-          type: 'file',
-          size: 2048,
-          modified: Date.now() - 7200000
-        },
-        {
-          name: 'node_modules',
-          path: `${path}/node_modules`,
-          type: 'directory',
-          modified: Date.now() - 172800000
-        }
-      ];
-      
-      setRemoteFiles(mockFiles);
+          path: parentPath,
+          file_type: 'directory'
+        });
+      }
+
+      setRemoteFiles(files);
       setCurrentPath(path);
     } catch (error) {
       console.error('Failed to load remote files:', error);
+      alert(`Dosya listesi alınamadı: ${error}`);
     }
   };
 
@@ -225,17 +213,17 @@ export default function RemoteDevelopment({ isOpen, onClose, onOpenRemoteFile }:
 
   const uploadFile = async (file: File) => {
     if (!selectedConnection) return;
-    
+
     try {
       // This would be implemented in the Rust backend
       console.log(`Uploading ${file.name} to ${currentPath}`);
-      
+
       // Simulate upload
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
+
       // Refresh file list
       await loadRemoteFiles(selectedConnection, currentPath);
-      
+
       alert(`File ${file.name} uploaded successfully!`);
     } catch (error) {
       console.error('Upload failed:', error);
@@ -245,14 +233,14 @@ export default function RemoteDevelopment({ isOpen, onClose, onOpenRemoteFile }:
 
   const downloadFile = async (file: RemoteFile) => {
     if (!selectedConnection) return;
-    
+
     try {
       // This would be implemented in the Rust backend
       console.log(`Downloading ${file.name} from ${file.path}`);
-      
+
       // Simulate download
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
+
       alert(`File ${file.name} downloaded successfully!`);
     } catch (error) {
       console.error('Download failed:', error);
@@ -262,17 +250,17 @@ export default function RemoteDevelopment({ isOpen, onClose, onOpenRemoteFile }:
 
   const createRemoteFolder = async (name: string) => {
     if (!selectedConnection) return;
-    
+
     try {
       // This would be implemented in the Rust backend
       console.log(`Creating folder ${name} in ${currentPath}`);
-      
+
       // Simulate folder creation
       await new Promise(resolve => setTimeout(resolve, 500));
-      
+
       // Refresh file list
       await loadRemoteFiles(selectedConnection, currentPath);
-      
+
     } catch (error) {
       console.error('Folder creation failed:', error);
       alert(`Folder creation failed: ${error}`);
@@ -281,20 +269,20 @@ export default function RemoteDevelopment({ isOpen, onClose, onOpenRemoteFile }:
 
   const deleteRemoteFile = async (file: RemoteFile) => {
     if (!selectedConnection) return;
-    
+
     const confirmed = confirm(`Are you sure you want to delete ${file.name}?`);
     if (!confirmed) return;
-    
+
     try {
       // This would be implemented in the Rust backend
       console.log(`Deleting ${file.name} from ${file.path}`);
-      
+
       // Simulate deletion
       await new Promise(resolve => setTimeout(resolve, 500));
-      
+
       // Refresh file list
       await loadRemoteFiles(selectedConnection, currentPath);
-      
+
     } catch (error) {
       console.error('Deletion failed:', error);
       alert(`Deletion failed: ${error}`);
@@ -319,7 +307,7 @@ export default function RemoteDevelopment({ isOpen, onClose, onOpenRemoteFile }:
     <>
       {/* Backdrop */}
       <div className="fixed inset-0 bg-black/50 z-50" onClick={onClose} />
-      
+
       {/* Modal */}
       <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
         <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-2xl w-full max-w-7xl max-h-[90vh] overflow-hidden">
@@ -334,7 +322,7 @@ export default function RemoteDevelopment({ isOpen, onClose, onOpenRemoteFile }:
                 </span>
               )}
             </div>
-            
+
             <button
               onClick={onClose}
               className="w-6 h-6 flex items-center justify-center text-[var(--color-textSecondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover)] rounded transition-colors"
@@ -356,11 +344,10 @@ export default function RemoteDevelopment({ isOpen, onClose, onOpenRemoteFile }:
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                    activeTab === tab.id
-                      ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
-                      : 'border-transparent text-[var(--color-textSecondary)] hover:text-[var(--color-text)]'
-                  }`}
+                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id
+                    ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
+                    : 'border-transparent text-[var(--color-textSecondary)] hover:text-[var(--color-text)]'
+                    }`}
                 >
                   <span className="mr-2">{tab.icon}</span>
                   {tab.name}
@@ -399,13 +386,13 @@ export default function RemoteDevelopment({ isOpen, onClose, onOpenRemoteFile }:
                           placeholder="My Server"
                         />
                       </div>
-                      
+
                       <div>
                         <label className="block text-sm font-medium mb-1">Connection Type:</label>
                         <select
                           value={newConnection.type}
-                          onChange={(e) => setNewConnection(prev => ({ 
-                            ...prev, 
+                          onChange={(e) => setNewConnection(prev => ({
+                            ...prev,
                             type: e.target.value as any,
                             port: e.target.value === 'ssh' ? 22 : e.target.value === 'ftp' ? 21 : 22
                           }))}
@@ -417,7 +404,7 @@ export default function RemoteDevelopment({ isOpen, onClose, onOpenRemoteFile }:
                           <option value="docker">Docker</option>
                         </select>
                       </div>
-                      
+
                       <div>
                         <label className="block text-sm font-medium mb-1">Host:</label>
                         <input
@@ -428,7 +415,7 @@ export default function RemoteDevelopment({ isOpen, onClose, onOpenRemoteFile }:
                           placeholder="192.168.1.100"
                         />
                       </div>
-                      
+
                       <div>
                         <label className="block text-sm font-medium mb-1">Port:</label>
                         <input
@@ -438,7 +425,7 @@ export default function RemoteDevelopment({ isOpen, onClose, onOpenRemoteFile }:
                           className="w-full p-2 bg-[var(--color-surface)] border border-[var(--color-border)] rounded"
                         />
                       </div>
-                      
+
                       <div>
                         <label className="block text-sm font-medium mb-1">Username:</label>
                         <input
@@ -449,7 +436,7 @@ export default function RemoteDevelopment({ isOpen, onClose, onOpenRemoteFile }:
                           placeholder="user"
                         />
                       </div>
-                      
+
                       <div>
                         <label className="block text-sm font-medium mb-1">Password:</label>
                         <input
@@ -460,7 +447,7 @@ export default function RemoteDevelopment({ isOpen, onClose, onOpenRemoteFile }:
                           placeholder="••••••••"
                         />
                       </div>
-                      
+
                       <div className="col-span-2">
                         <label className="block text-sm font-medium mb-1">SSH Key Path (optional):</label>
                         <input
@@ -471,7 +458,7 @@ export default function RemoteDevelopment({ isOpen, onClose, onOpenRemoteFile }:
                           placeholder="~/.ssh/id_rsa"
                         />
                       </div>
-                      
+
                       <div className="col-span-2">
                         <label className="block text-sm font-medium mb-1">Working Directory:</label>
                         <input
@@ -483,7 +470,7 @@ export default function RemoteDevelopment({ isOpen, onClose, onOpenRemoteFile }:
                         />
                       </div>
                     </div>
-                    
+
                     <div className="flex gap-2 mt-4">
                       <button
                         onClick={addConnection}
@@ -509,11 +496,10 @@ export default function RemoteDevelopment({ isOpen, onClose, onOpenRemoteFile }:
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             <h5 className="font-semibold">{connection.name}</h5>
-                            <span className={`text-xs px-2 py-1 rounded ${
-                              connection.connected 
-                                ? 'bg-green-100 text-green-800' 
-                                : 'bg-gray-100 text-gray-800'
-                            }`}>
+                            <span className={`text-xs px-2 py-1 rounded ${connection.connected
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-gray-100 text-gray-800'
+                              }`}>
                               {connection.connected ? 'Connected' : 'Disconnected'}
                             </span>
                             <span className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded">
@@ -532,7 +518,7 @@ export default function RemoteDevelopment({ isOpen, onClose, onOpenRemoteFile }:
                             </div>
                           )}
                         </div>
-                        
+
                         <div className="flex gap-2">
                           {connection.connected ? (
                             <>
@@ -592,7 +578,7 @@ export default function RemoteDevelopment({ isOpen, onClose, onOpenRemoteFile }:
                         <h4 className="text-lg font-semibold">Remote Files - {selectedConnection.name}</h4>
                         <p className="text-sm text-[var(--color-textSecondary)]">Current path: {currentPath}</p>
                       </div>
-                      
+
                       <div className="flex gap-2">
                         <input
                           type="file"
@@ -634,14 +620,14 @@ export default function RemoteDevelopment({ isOpen, onClose, onOpenRemoteFile }:
                         <div className="col-span-2">Modified</div>
                         <div className="col-span-2">Actions</div>
                       </div>
-                      
+
                       {remoteFiles.map((file, index) => (
                         <div key={index} className="grid grid-cols-12 gap-2 p-3 border-b border-[var(--color-border)] hover:bg-[var(--color-hover)] transition-colors">
                           <div className="col-span-6 flex items-center gap-2">
-                            <span>{file.type === 'directory' ? '📁' : '📄'}</span>
+                            <span>{file.file_type === 'directory' ? '📁' : '📄'}</span>
                             <button
                               onClick={() => {
-                                if (file.type === 'directory') {
+                                if (file.file_type === 'directory') {
                                   navigateToPath(file.path);
                                 } else {
                                   onOpenRemoteFile(selectedConnection, file.path);
@@ -659,7 +645,7 @@ export default function RemoteDevelopment({ isOpen, onClose, onOpenRemoteFile }:
                             {formatDate(file.modified)}
                           </div>
                           <div className="col-span-2 flex gap-1">
-                            {file.type === 'file' && (
+                            {file.file_type === 'file' && (
                               <button
                                 onClick={() => downloadFile(file)}
                                 className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:opacity-80 transition-opacity"

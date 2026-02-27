@@ -60,3 +60,8 @@ Thumbs.db
 # Rust
 **/*.rs.bk
 *.pdb
+
+# CorexA caches and vector stores
+src-tauri/.fastembed_cache/
+src-tauri/vector_store_data/
+.corex_vector_data/

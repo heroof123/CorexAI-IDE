@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { CodeAction, FileIndex } from "../types/index";
 import ProactiveSuggestions from "./ProactiveSuggestions";
-import DebugPanel from "./DebugPanel";
 import { useLanguage } from "../contexts/LanguageContext";
+import { agentService } from "../services/agentService";
+import { getAutonomyConfig } from "../services/autonomy";
 
 interface Problem {
   id: string;
@@ -39,10 +40,9 @@ function BottomPanel({
   projectPath,
   currentFile,
   onSuggestionClick,
-  onBreakpointToggle,
 }: BottomPanelProps) {
   const [activeTab, setActiveTab] = useState<
-    "problems" | "output" | "terminal" | "debug" | "actions" | "suggestions"
+    "problems" | "output" | "terminal" | "actions" | "suggestions"
   >("problems");
   const [problems, setProblems] = useState<Problem[]>([]);
   const [output, setOutput] = useState<string[]>([]);
@@ -112,6 +112,11 @@ function BottomPanel({
     });
 
     setProblems(detectedProblems);
+
+    // 🤖 Proactively notify agent of problems
+    if (detectedProblems.length > 0) {
+      agentService.analyzeProblems(detectedProblems);
+    }
   };
 
   const addOutput = (message: string) => {
@@ -233,7 +238,6 @@ function BottomPanel({
             { id: "actions", label: t("panel.aiActions"), icon: "🤖" },
             { id: "output", label: t("panel.output"), icon: "📄" },
             { id: "terminal", label: t("panel.terminal"), icon: "💻" },
-            { id: "debug", label: t("panel.debugTest"), icon: "🔧" },
           ].map(tab => {
             const count = getTabCount(tab.id);
             return (
@@ -241,8 +245,8 @@ function BottomPanel({
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
                 className={`px-3 py-1 text-xs flex items-center gap-1 transition-colors ${activeTab === tab.id
-                    ? "text-white bg-[var(--color-surface)] border-b-2 border-blue-500"
-                    : "text-neutral-400 hover:text-neutral-300"
+                  ? "text-white bg-[var(--color-surface)] border-b-2 border-blue-500"
+                  : "text-neutral-400 hover:text-neutral-300"
                   }`}
               >
                 <span>{tab.icon}</span>
@@ -257,33 +261,42 @@ function BottomPanel({
           })}
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              // Clear current tab content
-              switch (activeTab) {
-                case "problems":
-                  setProblems([]);
-                  break;
-                case "output":
-                  setOutput([]);
-                  break;
-                case "terminal":
-                  setTerminalOutput([]);
-                  break;
-              }
-            }}
-            className="text-xs text-neutral-400 hover:text-neutral-300 transition-colors"
-            title="Temizle"
-          >
-            🗑️
-          </button>
-          <button
-            onClick={onToggle}
-            className="text-xs text-[var(--color-textSecondary)] hover:text-[var(--color-text)] transition-colors"
-          >
-            ▼
-          </button>
+        <div className="flex items-center gap-3">
+          {/* Autopilot Status Badge */}
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-blue-500/10 border border-blue-500/30">
+            <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+            <span className="text-[10px] font-bold text-blue-400 uppercase tracking-tighter">Corex Autopilot</span>
+            <span className="text-[10px] text-blue-300/60 font-mono">L{getAutonomyConfig().level}</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                // Clear current tab content
+                switch (activeTab) {
+                  case "problems":
+                    setProblems([]);
+                    break;
+                  case "output":
+                    setOutput([]);
+                    break;
+                  case "terminal":
+                    setTerminalOutput([]);
+                    break;
+                }
+              }}
+              className="text-xs text-neutral-400 hover:text-neutral-300 transition-colors"
+              title="Temizle"
+            >
+              🗑️
+            </button>
+            <button
+              onClick={onToggle}
+              className="text-xs text-[var(--color-textSecondary)] hover:text-[var(--color-text)] transition-colors"
+            >
+              ▼
+            </button>
+          </div>
         </div>
       </div>
 
@@ -438,7 +451,6 @@ function BottomPanel({
                   onClick={() => {
                     addTerminalOutput("$ npm --version");
                     addTerminalOutput("9.8.1");
-                    addTerminalOutput("$ node --version");
                     addTerminalOutput("v18.17.0");
                   }}
                   className="mt-2 px-2 py-1 bg-green-600 text-white rounded text-xs"
@@ -473,16 +485,6 @@ function BottomPanel({
                 </div>
               </div>
             )}
-          </div>
-        )}
-
-        {activeTab === "debug" && (
-          <div className="h-full">
-            <DebugPanel
-              projectPath={projectPath}
-              currentFile={currentFile || ""}
-              onBreakpointToggle={onBreakpointToggle}
-            />
           </div>
         )}
       </div>

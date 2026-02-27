@@ -35,6 +35,8 @@ once_cell = "1.20"
 base64 = "0.21" # 🆕 Vision AI - Base64 image decoding
 rand = "0.8" # 🆕 Random sampling for temperature-based generation
 sysinfo = "0.30" # 🆕 Sistem bilgisi (RAM, CPU) almak için
+ssh2 = "0.9" # 🆕 SSH/SFTP bağlantıları için
+bollard = "0.15" # 🆕 Docker API entegrasyonu için
 
 # 🆕 WebSocket Real-time Collaboration
 tokio-tungstenite = "0.23"
@@ -61,6 +63,7 @@ tree-sitter-rust = "0.21"
 tree-sitter-go = "0.21"
 lru = "0.12"  # LRU cache for AST caching
 regex = "1.10"  # Regex for fallback parsing
+fastembed = "5.11.0"
 
 [features]
 default = ["cuda"]  # 🎮 NVIDIA GPU için CUDA (senin sistem)
