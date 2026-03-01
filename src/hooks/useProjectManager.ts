@@ -1,7 +1,7 @@
 // hooks/useProjectManager.ts
 // Proje açma, indexleme ve dosya yönetimi sorumluluklarını taşır
 
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { createEmbedding } from "../services/embedding";

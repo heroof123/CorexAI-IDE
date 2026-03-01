@@ -25,14 +25,14 @@ pub struct CodeChunk {
 
 /// Vector database interface for semantic code search
 pub struct VectorDB {
-    db_path: String,
+    _db_path: String,
 }
 
 impl VectorDB {
     /// Initialize the vector database in embedded mode
     pub async fn init(db_path: &str) -> Result<Self, String> {
         Ok(Self {
-            db_path: db_path.to_string(),
+            _db_path: db_path.to_string(),
         })
     }
     

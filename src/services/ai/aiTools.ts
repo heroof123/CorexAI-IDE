@@ -867,31 +867,23 @@ async function generateCode(description: string, language?: string): Promise<any
   try {
     console.log('💻 Generating code:', description);
 
-    // Basit kod template'i
-    const lang = language || 'typescript';
-    let code = '';
+    const { callAI } = await import('./aiProvider');
+    const { getModelIdForRole } = await import('./models');
 
-    if (lang === 'typescript' || lang === 'javascript') {
-      code = `// ${description}
-export function generatedFunction() {
-  // TODO: Implement ${description}
-  console.log('Generated function');
-  return true;
-}`;
-    } else if (lang === 'python') {
-      code = `# ${description}
-def generated_function():
-    # TODO: Implement ${description}
-    print('Generated function')
-    return True`;
-    } else {
-      code = `// ${description}\n// TODO: Implement this`;
+    const prompt = `You are an expert ${language || 'typescript'} developer. Generate the following code snippet requested by the user. Do not include markdown explanations. Just return the raw code.
+Request: ${description}`;
+
+    const modelId = getModelIdForRole();
+    const generated = await callAI(prompt, modelId);
+    let code = generated.trim();
+    if (code.startsWith('```')) {
+      code = code.replace(/```[a-z]*\\n/i, '').replace(/```$/, '').trim();
     }
 
     return {
       success: true,
       code,
-      language: lang,
+      language: language || 'typescript',
       description,
       message: 'Code generated successfully'
     };

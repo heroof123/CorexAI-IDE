@@ -19,7 +19,7 @@ interface CursorPosition {
 }
 
 export function useCollaboration() {
-  const { coreMessages } = useCore();
+  const { } = useCore();
   const [isEnabled, setIsEnabled] = useState(false);
   const [localCursor, setLocalCursor] = useState<CursorPosition | null>(null);
   const cursorBatchRef = useRef<Map<string, CursorPosition>>(new Map());
