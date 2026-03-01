@@ -1,9 +1,9 @@
-import { babelEngine } from "../../services/babelEngine";
+// babelEngine removed
 import { quantumCodeSuperposition } from "../../services/quantumCodeSuperposition";
 import { codeDnaSplicing } from "../../services/codeDnaSplicing";
 import { legacyWhisperer } from "../../services/legacyWhisperer";
 import { synestheticCodeView } from "../../services/synestheticCodeView";
-import { polyglotEngine } from "../../services/polyglotEngine";
+// polyglotEngine removed
 import { freshEyesMode } from "../../services/freshEyesMode";
 import { blackholeGarbageCollector } from "../../services/blackholeGarbageCollector";
 import { codeEthicsEnforcer } from "../../services/codeEthicsEnforcer";
@@ -257,25 +257,7 @@ export function buildCommandPaletteList(
             },
         },
         /* !! FUTURE IMPACT ANALYZER KALDIRILDI (USER İSTEĞİ ÜZERİNE) !! */
-        {
-            id: "babel-engine",
-            title: "🌍 Babel Engine (Evrensel Çevirmen)",
-            description: "Dilden bağımsız, bozuk komutları tam fonksiyonel koda çevir.",
-            category: "Futuristic",
-            icon: "🗣️",
-            shortcut: "Ctrl+Shift+F2",
-            action: async () => {
-                const intent = window.prompt("Babel Engine'a doğal dille veya kaba sözlerle ne istediğinizi yazın:");
-                if (!intent) return;
-                notify("info", "Babel Çevirisi", "Niyetiniz koda çevriliyor...");
-                babelEngine.setEnabled(true);
-                const code = await babelEngine.translateIntentToCode(intent, project.projectPath);
-                if (code && editor.selectedFile) {
-                    navigator.clipboard.writeText(code);
-                    notify("success", "Koda Çevrildi!", "Babel Engine kodu oluşturdu ve Pano'ya kopyaladı.");
-                }
-            }
-        },
+        /* !! BABEL ENGINE KALDIRILDI (USER İSTEĞİ ÜZERİNE) !! */
         {
             id: "quantum-superposition",
             title: "🌀 Quantum Code Superposition (Süperpozisyon)",
@@ -386,24 +368,7 @@ export function buildCommandPaletteList(
                 }
             }
         },
-        {
-            id: "polyglot-engine",
-            title: "🌍 Polyglot Engine (Çoklu Dil Çevirici)",
-            description: "Projeyi/mimariyi tek tuşla başka dile (Node -> Rust, Go) çevir",
-            category: "Futuristic",
-            icon: "🔤",
-            shortcut: "Ctrl+Shift+F8",
-            action: async () => {
-                const targetLang = window.prompt("Hangi dile çevirmek istiyorsunuz? (Örn: Rust, Go)");
-                if (!targetLang) return;
-                notify("info", "Polyglot Aktif", "Proje " + targetLang + " mimarisine dönüştürülüyor...");
-                const result = await polyglotEngine.translateArchitecture(editor.fileContent || "", "Mevcut", targetLang);
-                if (result) {
-                    navigator.clipboard.writeText(result);
-                    notify("success", "Dönüşüm Tamam", "Sonuç panoya kopyalandı.");
-                }
-            }
-        },
+        /* !! POLYGLOT ENGINE KALDIRILDI (USER İSTEĞİ ÜZERİNE) !! */
         {
             id: "fresh-eyes-mode",
             title: "🕶️ Fresh Eyes Mode (Göz Tazeleyici)",

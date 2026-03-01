@@ -11,21 +11,15 @@ import { useUIState } from "./useUIState";
 import { useAIBackgroundAnalysis } from "./useAIBackgroundAnalysis";
 import { useKeyboardShortcuts, createShortcut } from "./useKeyboardShortcuts";
 import { agentService } from "../services/agentService";
-import { voiceService } from "../services/voiceService";
-import { WorkflowNotification } from "../types/workflow";
-import { cacheManager } from "../services/cache";
-import { initializeExtension } from "../extension";
+import { useVoiceLogic } from "./useVoiceLogic";
+import { useAppFuturism } from "./useAppFuturism";
 import { FileIndex } from "../types/index";
-import { futureImpactAnalyzer } from "../services/futureImpactAnalyzer";
-import { codeOracle } from "../services/codeOracle";
-import { codeDnaSplicing } from "../services/codeDnaSplicing";
-import { quantumCodeSuperposition } from "../services/quantumCodeSuperposition";
-import { babelEngine } from "../services/babelEngine";
-import { getAutonomyConfig } from "../services/ai/autonomy";
-import { legacyWhisperer } from "../services/legacyWhisperer";
-import { synestheticCodeView } from "../services/synestheticCodeView";
-import { zeroLatencyCompilation } from "../services/zeroLatencyCompilation";
-import { blackholeGarbageCollector } from "../services/blackholeGarbageCollector";
+import { WorkflowNotification } from "../types/workflow";
+import { initializeExtension } from "../extension";
+import { cacheManager } from "../services/cache";
+import { buildCommandPaletteList } from "./commands/commandPalette";
+
+// Futurism services are now in useAppFuturism hook
 // other futuristic services...
 
 export function useAppLogic() {
@@ -148,37 +142,10 @@ export function useAppLogic() {
 
         agentService.registerChatCallback(callback);
         return () => agentService.registerChatCallback(() => { });
-    }, [showRightSidebar, toggleRightSidebar]);
+    }, [showRightSidebar, toggleRightSidebar, chat]); // Chat added to deps
 
     // 🎙️ Voice Command Handling
-    const [isVoiceSupported] = useState(voiceService.isSupported());
-    const [voiceStatus, setVoiceStatus] = useState<'listening' | 'idle' | 'processing' | 'error'>('idle');
-
-    useEffect(() => {
-        voiceService.onStatus(setVoiceStatus);
-    }, []);
-
-    const handleVoiceCommand = (command: string) => {
-        console.log("🎤 Voice Command Received:", command);
-        switch (command) {
-            case 'SAVE':
-                editor.saveFile();
-                notify("success", "Sesli Komut", "Dosya kaydedildi!");
-                break;
-            case 'FORMAT':
-                notify("info", "Sesli Komut", "Kod formatlanıyor...");
-                break;
-            case 'TOGGLE_SIDEBAR':
-                toggleLeftSidebar();
-                break;
-            case 'TOGGLE_CHAT':
-                toggleRightSidebar();
-                break;
-            case 'NEW_AGENT':
-                chat.sendMessage("/agent");
-                break;
-        }
-    };
+    const voice = useVoiceLogic(editor, toggleLeftSidebar, toggleRightSidebar, chat, notify);
 
     // ── AI Background Analysis (proaktif — dosya açıldığında otomatik) ────────
     const [isAIReady, setIsAIReady] = useState(false);
@@ -191,51 +158,14 @@ export function useAppLogic() {
         };
         checkAI();
     }, []);
+
     const aiAnalysis = useAIBackgroundAnalysis(editor.selectedFile, editor.fileContent, isAIReady);
+
+    // Futurism & Autonomy logic (codeOracle removed per user request)
+    useAppFuturism(editor.selectedFile, editor.fileContent, notify);
 
     // Workflow notification state
     const [notification, setNotification] = useState<WorkflowNotification | null>(null);
-
-    // ── Full Automation / Futuristic Features Integration ────────────────────
-    useEffect(() => {
-        // Tam Otomasyon Seviye Kontrolü (Seviye 4 veya 5)
-        const checkAutonomyMode = () => {
-            const config = getAutonomyConfig();
-            const isFullAuto = config.level >= 4;
-
-            // Fütüristik Servisleri "Tam Otomasyon" moduna göre aktifleştir
-            futureImpactAnalyzer.setEnabled(isFullAuto || true); // Allow manual trigger
-            codeOracle.setEnabled(isFullAuto);
-            codeDnaSplicing.setEnabled(isFullAuto || true);
-            quantumCodeSuperposition.setEnabled(isFullAuto || true);
-            babelEngine.setEnabled(isFullAuto || true);
-            legacyWhisperer.setEnabled(isFullAuto || true);
-            synestheticCodeView.setEnabled(isFullAuto || true);
-            zeroLatencyCompilation.setEnabled(isFullAuto || true);
-            blackholeGarbageCollector.setEnabled(isFullAuto, (msg) => notify("info", "🗑️ Blackhole GC", msg));
-
-            if (isFullAuto) {
-                console.log("🚀 Tam Otomasyon (Full Auto) aktif! Fütüristik ürünler devrede: Code Oracle, Future Impact v.b.");
-            }
-        };
-
-        checkAutonomyMode();
-        // Belirli aralıklarla otomasyon konfigini dinle (localStorage vs)
-        window.addEventListener('storage', checkAutonomyMode);
-        return () => window.removeEventListener('storage', checkAutonomyMode);
-    }, []);
-
-    // Code Oracle & Zero Latency: editor içeriği değiştikçe dinler
-    useEffect(() => {
-        if (editor.selectedFile && editor.fileContent !== undefined) {
-            codeOracle.watchFiles(editor.fileContent, editor.selectedFile, (bgPrediction) => {
-                notify("warning", "Code Oracle (Hata Kehaneti) 🔮", bgPrediction);
-            });
-
-            // Speculative background compilation (sıfır gecikme derlemeyi tetikle)
-            zeroLatencyCompilation.onCodeChange(editor.selectedFile, editor.fileContent);
-        }
-    }, [editor.fileContent]);
 
     // ── Initialization ───────────────────────────────────────────────────────
     useEffect(() => {
@@ -434,7 +364,6 @@ export function useAppLogic() {
     ]);
 
     // ── Command Palette commands ─────────────────────────────────────────────
-    const { buildCommandPaletteList } = require("./commands/commandPalette");
     const commands = buildCommandPaletteList(
         editor,
         project,
@@ -472,12 +401,7 @@ export function useAppLogic() {
         project,
         editor,
         chat,
-        voice: {
-            isVoiceSupported,
-            voiceStatus,
-            setVoiceStatus,
-            handleVoiceCommand
-        },
+        voice,
         aiAnalysis,
         notification,
         setNotification,

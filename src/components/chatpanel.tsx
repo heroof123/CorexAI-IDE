@@ -1,1419 +1,31 @@
-import { useState, useRef, useEffect, memo, useCallback } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { invoke } from "@tauri-apps/api/core";
-import { Message, CodeAction } from "../types/index";
-import { TaskProgressCard } from "./TaskProgressCard";
+import { ChatPanelProps } from "./ChatPanel/types";
+import { MessageItem } from "./ChatPanel/MessageItem";
+import { useChatLogic } from "../hooks/useChatLogic";
 import DiffViewer from "./Diffviewer";
 import SmartSuggestions from "./SmartSuggestions";
-import LivePreview from "./LivePreview";
-import { githubAgent, GithubAgentTask } from "../services/githubAgent";
 
-interface ChatPanelProps {
-  messages: Message[];
-  isLoading: boolean;
-  onSendMessage: (message: string, context?: string) => void;
-  pendingActions: CodeAction[];
-  onAcceptAction: (actionId: string) => void;
-  onRejectAction: (actionId: string) => void;
-  onAcceptAllActions?: () => void;
-  onNewSession?: () => void;
-  isIndexing: boolean;
-  currentFile?: string;
-  projectContext?: {
-    name: string;
-    type: string;
-    mainLanguages: string[];
-  };
-  onStopGeneration?: () => void;
-  onRegenerateResponse?: () => void;
-  isStreaming?: boolean;
-  modelName?: string;
-  isMentorMode?: boolean;
-  onMentorModeToggle?: (enabled: boolean) => void;
-  projectPath?: string;
-}
-
-// ─── Yardımcı: panoya kopyala ────────────────────────────────────────────────
-function copyToClipboard(text: string) {
-  navigator.clipboard.writeText(text).catch(() => {
-    const el = document.createElement("textarea");
-    el.value = text;
-    document.body.appendChild(el);
-    el.select();
-    document.execCommand("copy");
-    document.body.removeChild(el);
-  });
-}
-
-// ─── Kod Bloğu (syntax highlight + kopyala butonu) ───────────────────────────
-function CodeBlock({ language, children }: { language: string; children: string }) {
-  const isPreviewable = ["html", "css", "javascript", "typescript", "jsx", "tsx", "react"].includes(language?.toLowerCase() || "");
-  const [showPreview, setShowPreview] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = () => {
-    copyToClipboard(children);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  // Mermaid diagram özel render
-  if (language === "mermaid") {
-    return <MermaidDiagram code={children} />;
-  }
-
-  return (
-    <div style={{ position: "relative", margin: "6px 0" }}>
-      {/* Dil etiketi + kopyala */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          background: "#1e293b",
-          padding: "3px 10px",
-          borderRadius: "6px 6px 0 0",
-          borderBottom: "1px solid #334155",
-        }}
-      >
-        <span style={{ fontSize: 10, color: "#64748b", fontFamily: "monospace" }}>
-          {language || "code"}
-        </span>
-        <div style={{ display: "flex", gap: 6 }}>
-          {isPreviewable && (
-            <button
-              onClick={() => setShowPreview(!showPreview)}
-              style={{
-                fontSize: 10,
-                padding: "1px 7px",
-                borderRadius: 4,
-                border: "1px solid #334155",
-                background: showPreview ? "#3b82f6" : "transparent",
-                color: showPreview ? "white" : "#94a3b8",
-                cursor: "pointer",
-              }}
-            >
-              {showPreview ? "Kod Gör" : "Önizle"}
-            </button>
-          )}
-          <button
-            onClick={handleCopy}
-            style={{
-              fontSize: 10,
-              padding: "1px 7px",
-              borderRadius: 4,
-              border: "1px solid #334155",
-              background: "transparent",
-              color: copied ? "#22c55e" : "#94a3b8",
-              cursor: "pointer",
-              transition: "color 0.2s",
-            }}
-          >
-            {copied ? "✓ Kopyalandı" : "Kopyala"}
-          </button>
-        </div>
-      </div>
-      {showPreview && isPreviewable ? (
-        <div style={{ height: 350, marginTop: 0 }}>
-          <LivePreview code={children} showControls={false} className="rounded-t-none border-t-0" />
-        </div>
-      ) : (
-        <SyntaxHighlighter
-          language={language || "text"}
-          style={vscDarkPlus}
-          customStyle={{
-            margin: 0,
-            borderRadius: "0 0 6px 6px",
-            fontSize: 11,
-            padding: "10px 12px",
-            border: "1px solid #1e293b",
-            borderTop: "none",
-          }}
-          wrapLongLines
-        >
-          {children}
-        </SyntaxHighlighter>
-      )}
-    </div>
-  );
-}
-
-// ─── Mermaid Diagram ──────────────────────────────────────────────────────────
-function MermaidDiagram({ code }: { code: string }) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const mermaid = (await import("mermaid")).default;
-        mermaid.initialize({ startOnLoad: false, theme: "dark" });
-        const id = `mermaid-${Math.random().toString(36).slice(2)}`;
-        const { svg } = await mermaid.render(id, code);
-        if (!cancelled && ref.current) {
-          ref.current.innerHTML = svg;
-        }
-      } catch {
-        if (!cancelled && ref.current) {
-          ref.current.innerHTML = `<pre style="color:#ef4444;font-size:10px">${code}</pre>`;
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [code]);
-
-  return (
-    <div
-      ref={ref}
-      style={{
-        background: "#0f172a",
-        border: "1px solid #1e293b",
-        borderRadius: 8,
-        padding: 12,
-        margin: "6px 0",
-        overflow: "auto",
-      }}
-    />
-  );
-}
-
-// ─── Tool sonucu zengin kartı ─────────────────────────────────────────────────
-function ToolResultCard({
-  toolName,
-  result,
-  onAutoFix,
-}: {
-  toolName: string;
-  result: any;
-  onAutoFix?: (error: string) => void;
-}) {
-  if (!result || !result.success) {
-    return (
-      <div
-        style={{
-          marginTop: 4,
-          padding: "4px 8px",
-          background: "#ef444415",
-          border: "1px solid #ef444430",
-          borderRadius: 6,
-          fontSize: 10,
-          color: "#ef4444",
-        }}
-      >
-        ❌ {result?.error || "Analiz başarısız"}
-      </div>
-    );
-  }
-  const scoreColor = (s: number) => (s >= 80 ? "#22c55e" : s >= 60 ? "#eab308" : "#ef4444");
-
-  if (toolName === "code_review") {
-    return (
-      <div
-        style={{
-          marginTop: 8,
-          background: "#0f172a",
-          border: "1px solid #1e293b",
-          borderRadius: 8,
-          overflow: "hidden",
-          fontSize: 11,
-        }}
-      >
-        <div
-          style={{
-            padding: "8px 12px",
-            background: "linear-gradient(90deg,#1e293b,#0f172a)",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
-          <span style={{ fontWeight: 700, fontSize: 20, color: scoreColor(result.score) }}>
-            {result.score}
-          </span>
-          <div>
-            <div style={{ fontWeight: 600, color: "#e2e8f0", fontSize: 10 }}>
-              {result.path?.split(/[/\\]/).pop()}
-            </div>
-            <div style={{ color: "#94a3b8", fontSize: 9 }}>
-              {result.issueCount} sorun · {result.suggestions?.length || 0} öneri
-            </div>
-          </div>
-          {result.criticalIssues > 0 && (
-            <span
-              style={{
-                marginLeft: "auto",
-                padding: "2px 7px",
-                background: "#ef444420",
-                color: "#ef4444",
-                borderRadius: 4,
-                fontSize: 10,
-              }}
-            >
-              🔴 {result.criticalIssues} kritik
-            </span>
-          )}
-        </div>
-        {result.summary && (
-          <div
-            style={{
-              padding: "6px 12px",
-              color: "#94a3b8",
-              borderBottom: "1px solid #1e293b",
-              lineHeight: 1.5,
-            }}
-          >
-            {result.summary}
-          </div>
-        )}
-        {result.issues?.slice(0, 5).map((issue: any, i: number) => (
-          <div
-            key={i}
-            style={{
-              padding: "5px 12px",
-              borderBottom: "1px solid #1e293b20",
-              display: "flex",
-              gap: 8,
-            }}
-          >
-            <span>
-              {issue.severity === "high" ? "🔴" : issue.severity === "medium" ? "🟡" : "🔵"}
-            </span>
-            <span style={{ color: "#cbd5e1", flex: 1 }}>{issue.message}</span>
-            {issue.line > 0 && (
-              <code style={{ color: "#64748b", fontSize: 10 }}>:{issue.line}</code>
-            )}
-          </div>
-        ))}
-        {result.issueCount > 5 && (
-          <div style={{ padding: "4px 12px", color: "#64748b", fontSize: 10 }}>
-            +{result.issueCount - 5} sorun daha...
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (toolName === "security_scan") {
-    return (
-      <div
-        style={{
-          marginTop: 8,
-          background: "#0f172a",
-          border: "1px solid #1e293b",
-          borderRadius: 8,
-          overflow: "hidden",
-          fontSize: 11,
-        }}
-      >
-        <div
-          style={{
-            padding: "8px 12px",
-            background: "linear-gradient(90deg,#1e293b,#0f172a)",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
-          <span style={{ fontWeight: 700, fontSize: 20, color: scoreColor(result.securityScore) }}>
-            {result.securityScore}
-          </span>
-          <div>
-            <div style={{ fontWeight: 600, color: "#e2e8f0" }}>🔒 Güvenlik Taraması</div>
-            <div style={{ color: "#94a3b8", fontSize: 10 }}>
-              {result.path?.split(/[/\\]/).pop()} · {result.vulnerabilityCount} açık
-            </div>
-          </div>
-          {result.criticalVulnerabilities > 0 && (
-            <span
-              style={{
-                marginLeft: "auto",
-                padding: "2px 7px",
-                background: "#ef444420",
-                color: "#ef4444",
-                borderRadius: 4,
-                fontSize: 10,
-              }}
-            >
-              ⚠️ {result.criticalVulnerabilities} kritik
-            </span>
-          )}
-        </div>
-        {result.summary && (
-          <div style={{ padding: "6px 12px", color: "#94a3b8", borderBottom: "1px solid #1e293b" }}>
-            {result.summary}
-          </div>
-        )}
-        {result.vulnerabilities?.slice(0, 4).map((v: any, i: number) => (
-          <div
-            key={i}
-            style={{
-              padding: "5px 12px",
-              borderBottom: "1px solid #1e293b20",
-              display: "flex",
-              gap: 8,
-            }}
-          >
-            <span>
-              {v.severity === "critical" || v.severity === "high"
-                ? "🔴"
-                : v.severity === "medium"
-                  ? "🟡"
-                  : "🔵"}
-            </span>
-            <span style={{ color: "#cbd5e1", flex: 1 }}>{v.description || v.message}</span>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  if (toolName === "generate_docs") {
-    return (
-      <div
-        style={{
-          marginTop: 8,
-          background: "#0f172a",
-          border: "1px solid #1e293b",
-          borderRadius: 8,
-          overflow: "hidden",
-          fontSize: 11,
-        }}
-      >
-        <div
-          style={{ padding: "8px 12px", background: "#1e293b", color: "#e2e8f0", fontWeight: 600 }}
-        >
-          📄 Dokümantasyon — {result.path?.split(/[/\\]/).pop()}
-        </div>
-        {result.readme && (
-          <div
-            style={{ padding: "8px 12px", color: "#94a3b8", borderBottom: "1px solid #1e293b10" }}
-          >
-            <div style={{ color: "#7dd3fc", marginBottom: 4, fontSize: 10 }}>README</div>
-            {result.readme}
-          </div>
-        )}
-        {result.apiDocs && (
-          <div style={{ padding: "8px 12px", color: "#94a3b8" }}>
-            <div style={{ color: "#7dd3fc", marginBottom: 4, fontSize: 10 }}>API</div>
-            {result.apiDocs}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (toolName === "generate_tests") {
-    return (
-      <div
-        style={{
-          marginTop: 8,
-          background: "#0f172a",
-          border: "1px solid #1e293b",
-          borderRadius: 8,
-          overflow: "hidden",
-          fontSize: 11,
-        }}
-      >
-        <div
-          style={{ padding: "8px 12px", background: "#1e293b", color: "#e2e8f0", fontWeight: 600 }}
-        >
-          🧪 Test Kodu — {result.path?.split(/[/\\]/).pop()}
-        </div>
-        {result.unitTests && (
-          <div style={{ padding: "8px 12px" }}>
-            <div style={{ color: "#7dd3fc", marginBottom: 4, fontSize: 10 }}>UNIT TESTS</div>
-            <pre
-              style={{
-                color: "#94a3b8",
-                overflow: "auto",
-                maxHeight: 180,
-                fontSize: 10,
-                margin: 0,
-              }}
-            >
-              {result.unitTests}
-            </pre>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (toolName === "refactor_code") {
-    return (
-      <div
-        style={{
-          marginTop: 8,
-          background: "#0f172a",
-          border: "1px solid #1e293b",
-          borderRadius: 8,
-          overflow: "hidden",
-          fontSize: 11,
-        }}
-      >
-        <div
-          style={{ padding: "8px 12px", background: "#1e293b", color: "#e2e8f0", fontWeight: 600 }}
-        >
-          ♻️ Refactoring Önerileri — {result.path?.split(/[/\\]/).pop()}
-        </div>
-        {result.summary && (
-          <div
-            style={{ padding: "6px 12px", color: "#94a3b8", borderBottom: "1px solid #1e293b10" }}
-          >
-            {result.summary}
-          </div>
-        )}
-        {result.suggestions?.map((s: any, i: number) => (
-          <div
-            key={i}
-            style={{
-              padding: "7px 12px",
-              borderBottom: "1px solid #1e293b10",
-              display: "flex",
-              gap: 8,
-            }}
-          >
-            <span>{s.impact === "high" ? "🔴" : s.impact === "medium" ? "🟡" : "🔵"}</span>
-            <div>
-              <div style={{ color: "#7dd3fc", fontSize: 10 }}>{s.type}</div>
-              <div style={{ color: "#cbd5e1" }}>{s.description}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  /* ── Web Arama ─────────────────────────────────────── */
-  if (toolName === "web_search") {
-    return (
-      <div
-        style={{
-          marginTop: 8,
-          background: "#0f172a",
-          border: "1px solid #1e293b",
-          borderRadius: 8,
-          overflow: "hidden",
-          fontSize: 11,
-        }}
-      >
-        <div
-          style={{
-            padding: "6px 10px",
-            background: "#1e293b",
-            color: "#e2e8f0",
-            fontWeight: 600,
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            fontSize: 10
-          }}
-        >
-          <span>🔍</span> Arama:{" "}
-          <i style={{ color: "#94a3b8", fontWeight: 400 }}>{result.query}</i>
-          <span style={{ marginLeft: "auto", fontSize: 9, color: "#64748b" }}>
-            {result.resultCount || 0} sonuç
-          </span>
-        </div>
-        {result.results?.map((r: any, i: number) => (
-          <div key={i} style={{ padding: "7px 12px", borderBottom: "1px solid #1e293b20" }}>
-            <div style={{ fontWeight: 600, color: "#60a5fa", marginBottom: 2 }}>
-              {i + 1}. {r.title}
-            </div>
-            <div style={{ color: "#94a3b8", marginBottom: 3, lineHeight: 1.5 }}>
-              {r.snippet?.slice(0, 200)}
-            </div>
-            <a
-              href={r.url}
-              target="_blank"
-              rel="noreferrer"
-              style={{ color: "#334155", fontSize: 10 }}
-            >
-              🔗 {r.url?.slice(0, 70)}
-            </a>
-          </div>
-        ))}
-        {(!result.results || result.results.length === 0) && (
-          <div style={{ padding: 12, color: "#64748b", fontSize: 11 }}>Sonuç bulunamadı.</div>
-        )}
-      </div>
-    );
-  }
-
-  /* ── Plan Task (görev adımları kartı) ─────────────── */
-  if (toolName === "plan_task") {
-    // result.plan varsa yeni format (AgentTask)
-    if (result.plan) {
-      return <TaskProgressCard task={result.plan} />;
-    }
-
-    // Fallback: Eski format (string array)
-    const steps: string[] = result.steps || [];
-    return (
-      <div
-        style={{
-          marginTop: 8,
-          background: "#0f172a",
-          border: "1px solid #1e293b",
-          borderRadius: 8,
-          overflow: "hidden",
-          fontSize: 11,
-        }}
-      >
-        <div
-          style={{
-            padding: "8px 12px",
-            background: "linear-gradient(90deg,#1e293b,#0f172a)",
-            color: "#e2e8f0",
-            fontWeight: 600,
-          }}
-        >
-          📋 Görev Planı
-        </div>
-        {result.task && (
-          <div
-            style={{
-              padding: "6px 12px",
-              color: "#7dd3fc",
-              borderBottom: "1px solid #1e293b20",
-              fontStyle: "italic",
-            }}
-          >
-            {result.task}
-          </div>
-        )}
-        {steps.map((step: string, i: number) => (
-          <div
-            key={i}
-            style={{
-              padding: "6px 12px",
-              borderBottom: "1px solid #1e293b10",
-              display: "flex",
-              gap: 10,
-              alignItems: "flex-start",
-            }}
-          >
-            <div
-              style={{
-                width: 20,
-                height: 20,
-                borderRadius: "50%",
-                background: "#1e40af",
-                color: "#93c5fd",
-                display: "flex",
-                alignItems: "start",
-                justifyContent: "center",
-                fontSize: 10,
-                fontWeight: 700,
-                flexShrink: 0,
-                marginTop: 1,
-              }}
-            >
-              {i + 1}
-            </div>
-            <span style={{ color: "#cbd5e1", flex: 1, lineHeight: 1.5 }}>{step}</span>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  /* ── Terminal Çıktısı (Auto-Fix destekli) ─────────── */
-  if (toolName === "run_terminal") {
-    const isError = !result.success || result.exitCode !== 0;
-    return (
-      <div
-        style={{
-          marginTop: 8,
-          background: "#0f172a",
-          border: `1px solid ${isError ? "#ef444430" : "#1e293b"}`,
-          borderRadius: 8,
-          overflow: "hidden",
-          fontSize: 11,
-        }}
-      >
-        <div
-          style={{
-            padding: "8px 12px",
-            background: isError ? "#450a0a" : "#1e293b",
-            color: "#e2e8f0",
-            fontWeight: 600,
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          <span>{isError ? "❌" : "✅"}</span> Terminal
-          {isError && (
-            <span style={{ marginLeft: "auto", fontSize: 10, color: "#fca5a5" }}>
-              Exit Code: {result.exitCode}
-            </span>
-          )}
-        </div>
-        <div
-          style={{
-            padding: 12,
-            fontFamily: "monospace",
-            overflow: "auto",
-            maxHeight: 200,
-            color: "#cbd5e1",
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {result.stdout || result.stderr || result.message}
-        </div>
-        {isError && onAutoFix && (
-          <div
-            style={{
-              padding: "8px 12px",
-              borderTop: "1px solid #ef444430",
-              background: "#450a0a30",
-            }}
-          >
-            <button
-              onClick={() => onAutoFix(result.stderr || result.message || "Unknown error")}
-              style={{
-                background: "#ef4444",
-                color: "white",
-                border: "none",
-                borderRadius: 4,
-                padding: "4px 8px",
-                fontSize: 11,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 4,
-              }}
-            >
-              <span>✨</span> Otomatik Düzelt
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (toolName.startsWith("mcp_")) {
-    return (
-      <div
-        style={{
-          marginTop: 8,
-          background: "#0f172a",
-          border: "1px solid #1e293b",
-          borderRadius: 8,
-          overflow: "hidden",
-          fontSize: 11,
-        }}
-      >
-        <div
-          style={{
-            padding: "8px 12px",
-            background: "linear-gradient(90deg,#1e293b,#0f172a)",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 6,
-              background: "#3b82f615",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#3b82f6",
-              fontSize: 14,
-            }}
-          >
-            🔌
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 600, color: "#e2e8f0", fontSize: 10, opacity: 0.7 }}>
-              MCP SERVER: {result.server || toolName.split("_")[1]}
-            </div>
-            <div style={{ fontWeight: 700, color: "#fff", fontSize: 12 }}>
-              {result.tool || toolName.split("_").slice(2).join("_")}
-            </div>
-          </div>
-          <div
-            style={{
-              padding: "2px 8px",
-              background: "#22c55e15",
-              color: "#22c55e",
-              borderRadius: 4,
-              fontSize: 10,
-              fontWeight: 600,
-            }}
-          >
-            SUCCESS
-          </div>
-        </div>
-
-        {result.message && (
-          <div style={{ padding: "6px 12px", color: "#94a3b8", borderBottom: "1px solid #1e293b" }}>
-            {result.message}
-          </div>
-        )}
-
-        <div style={{ padding: "8px 12px" }}>
-          <pre style={{
-            background: "#00000040",
-            padding: 8,
-            borderRadius: 4,
-            overflow: "auto",
-            maxHeight: 200,
-            fontSize: 10,
-            color: "#cbd5e1"
-          }}>
-            {typeof result.data === 'string'
-              ? result.data
-              : JSON.stringify(result.data, null, 2)}
-          </pre>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <details style={{ marginTop: 6, fontSize: 10 }}>
-      <summary style={{ cursor: "pointer", color: "#64748b" }}>Sonuç</summary>
-      <pre
-        style={{
-          marginTop: 4,
-          padding: 8,
-          background: "#0f172a",
-          borderRadius: 4,
-          overflow: "auto",
-          color: "#94a3b8",
-          fontSize: 10,
-        }}
-      >
-        {JSON.stringify(result, null, 2)}
-      </pre>
-    </details>
-  );
-}
-
-// ─── Dosya linki algılama: `src/App.tsx:45` → tıklanabilir ───────────────────
-function parseFileLinks(text: string, onFileClick?: (path: string) => void): React.ReactNode {
-  // Pattern: word chars + .ext veya :satır
-  const re = /`([^`]+\.(tsx?|jsx?|py|rs|go|java|cpp?|css|html|vue|svelte)(?::\d+)?)`/g;
-  const parts: React.ReactNode[] = [];
-  let last = 0;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
-    if (m.index > last) parts.push(text.slice(last, m.index));
-    const raw = m[1];
-    const [filePath, line] = raw.split(":");
-    parts.push(
-      <span
-        key={m.index}
-        onClick={() => onFileClick?.(filePath)}
-        style={{
-          color: "#60a5fa",
-          cursor: onFileClick ? "pointer" : "default",
-          textDecoration: "underline",
-          fontFamily: "monospace",
-          fontSize: 10,
-        }}
-        title={onFileClick ? `${filePath} aç` : filePath}
-      >
-        {raw}
-      </span>
-    );
-    // Suppress unused warning
-    void line;
-    last = m.index + m[0].length;
-  }
-  if (last < text.length) parts.push(text.slice(last));
-  return parts.length > 0 ? parts : text;
-}
-
-// ─── Mesaj bileşeni ───────────────────────────────────────────────────────────
-const MessageItem = memo(
-  ({
-    msg,
-    onRate,
-    onFileClick,
-    onAutoFix,
-  }: {
-    msg: Message;
-    onRate?: (id: string, rating: "up" | "down") => void;
-    onFileClick?: (path: string) => void;
-    onAutoFix?: (error: string) => void;
-  }) => {
-    const [msgCopied, setMsgCopied] = useState(false);
-
-    const handleMsgCopy = () => {
-      copyToClipboard(msg.content);
-      setMsgCopied(true);
-      setTimeout(() => setMsgCopied(false), 2000);
-    };
-
-    const isAssistant = msg.role === "assistant";
-
-    return (
-      <div className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-        <div
-          className={`w-full rounded-lg px-3 py-2 ${msg.role === "user"
-            ? "bg-[var(--color-primary)] text-white shadow-sm"
-            : msg.role === "system"
-              ? msg.toolExecution
-                ? "bg-blue-500/10 text-blue-300 border border-blue-500/20"
-                : "bg-blue-500/10 text-[var(--color-primary)] border border-blue-500/20"
-              : "bg-[var(--color-surface)] text-[var(--color-text)] border border-[var(--color-border)] shadow-sm"
-            }`}
-          style={{ position: "relative" }}
-        >
-          {/* Tool Execution Header */}
-          {msg.toolExecution && (
-            <div className="flex items-center gap-2 mb-1">
-              {msg.toolExecution.status === "running" && (
-                <div className="w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
-              )}
-              {msg.toolExecution.status === "completed" && (
-                <div className="w-3 h-3 bg-green-500 rounded-full flex items-center justify-center">
-                  <svg
-                    className="w-2 h-2 text-white"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={3}
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-              )}
-              {msg.toolExecution.status === "failed" && (
-                <div className="w-3 h-3 bg-red-500 rounded-full flex items-center justify-center">
-                  <svg
-                    className="w-2 h-2 text-white"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={3}
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </div>
-              )}
-              <span className="text-[10px] font-mono opacity-70">
-                {msg.toolExecution.toolName.startsWith('mcp_') ? (
-                  <>
-                    <span className="text-blue-400 font-bold">🔌 MCP</span>{' '}
-                    {msg.toolExecution.toolName.split('_').slice(1).join(' > ')}
-                  </>
-                ) : (
-                  msg.toolExecution.toolName
-                )}
-              </span>
-              {msg.toolExecution.endTime && (
-                <span className="text-[10px] opacity-50">
-                  ({((msg.toolExecution.endTime - msg.toolExecution.startTime) / 1000).toFixed(1)}s)
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* Mesaj içeriği */}
-          <div
-            className="text-xs leading-relaxed"
-          >
-            {isAssistant ? (
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  h1: ({ children }) => (
-                    <h1
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 700,
-                        margin: "8px 0 4px",
-                        color: "var(--color-text)",
-                        borderBottom: "1px solid #1e293b",
-                        paddingBottom: 4,
-                      }}
-                    >
-                      {children}
-                    </h1>
-                  ),
-                  h2: ({ children }) => (
-                    <h2
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 700,
-                        margin: "6px 0 3px",
-                        color: "var(--color-text)",
-                      }}
-                    >
-                      {children}
-                    </h2>
-                  ),
-                  h3: ({ children }) => (
-                    <h3
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 600,
-                        margin: "5px 0 2px",
-                        color: "#cbd5e1",
-                      }}
-                    >
-                      {children}
-                    </h3>
-                  ),
-                  p: ({ children }) => (
-                    <div style={{ marginBottom: 8, lineHeight: 1.65 }}>{children}</div>
-                  ),
-                  strong: ({ children }) => (
-                    <strong style={{ color: "var(--color-text)", fontWeight: 700 }}>{children}</strong>
-                  ),
-                  em: ({ children }) => <em style={{ color: "#94a3b8" }}>{children}</em>,
-                  code({ inline, className, children, ...props }: any) {
-                    const lang = /language-(\w+)/.exec(className || "")?.[1] || "";
-                    const code = String(children).replace(/\n$/, "");
-                    if (inline) {
-                      return (
-                        <code
-                          style={{
-                            background: "#1e293b",
-                            color: "#7dd3fc",
-                            padding: "1px 5px",
-                            borderRadius: 3,
-                            fontSize: 10,
-                            fontFamily: "monospace",
-                          }}
-                          {...props}
-                        >
-                          {children}
-                        </code>
-                      );
-                    }
-                    return <CodeBlock language={lang}>{code}</CodeBlock>;
-                  },
-                  ul: ({ children }) => (
-                    <ul style={{ paddingLeft: 18, marginBottom: 4 }}>{children}</ul>
-                  ),
-                  ol: ({ children }) => (
-                    <ol style={{ paddingLeft: 18, marginBottom: 4 }}>{children}</ol>
-                  ),
-                  li: ({ children }) => (
-                    <li style={{ marginBottom: 3, lineHeight: 1.5 }}>{children}</li>
-                  ),
-                  blockquote: ({ children }) => (
-                    <blockquote
-                      style={{
-                        borderLeft: "3px solid #334155",
-                        paddingLeft: 10,
-                        margin: "4px 0",
-                        color: "#94a3b8",
-                        fontStyle: "italic",
-                      }}
-                    >
-                      {children}
-                    </blockquote>
-                  ),
-                  a: ({ href, children }) => {
-                    if (href?.startsWith("command:corex.applyAutofix")) {
-                      const error = decodeURIComponent(href.split("?")[1] || "");
-                      return (
-                        <button
-                          onClick={() => onAutoFix?.(error)}
-                          style={{
-                            color: "#ef4444",
-                            textDecoration: "underline",
-                            background: "transparent",
-                            border: "none",
-                            padding: 0,
-                            font: "inherit",
-                            cursor: "pointer",
-                            fontWeight: 700,
-                          }}
-                        >
-                          {children}
-                        </button>
-                      );
-                    }
-                    return (
-                      <a
-                        href={href}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{ color: "#60a5fa", textDecoration: "underline" }}
-                      >
-                        {children}
-                      </a>
-                    );
-                  },
-                  hr: () => (
-                    <hr
-                      style={{ border: "none", borderTop: "1px solid #1e293b", margin: "8px 0" }}
-                    />
-                  ),
-                  table: ({ children }) => (
-                    <table
-                      style={{
-                        width: "100%",
-                        borderCollapse: "collapse",
-                        fontSize: 10,
-                        margin: "6px 0",
-                        border: "1px solid #1e293b",
-                      }}
-                    >
-                      {children}
-                    </table>
-                  ),
-                  th: ({ children }) => (
-                    <th
-                      style={{
-                        padding: "5px 8px",
-                        background: "#1e293b",
-                        color: "#e2e8f0",
-                        textAlign: "left",
-                        border: "1px solid #334155",
-                      }}
-                    >
-                      {children}
-                    </th>
-                  ),
-                  td: ({ children }) => (
-                    <td
-                      style={{ padding: "4px 8px", border: "1px solid #1e293b", color: "#94a3b8" }}
-                    >
-                      {children}
-                    </td>
-                  ),
-                }}
-              >
-                {msg.content}
-              </ReactMarkdown>
-            ) : (
-              <span style={{ whiteSpace: "pre-wrap" }}>
-                {parseFileLinks(msg.content, onFileClick)}
-              </span>
-            )}
-          </div>
-
-          {/* Tool Result */}
-          {msg.toolExecution?.result && msg.toolExecution.status === "completed" && (
-            <ToolResultCard
-              toolName={msg.toolExecution.toolName}
-              result={msg.toolExecution.result}
-              onAutoFix={onAutoFix}
-            />
-          )}
-
-          {/* Asistan mesajı alt araç çubuğu: kopyala + rating */}
-          {isAssistant && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                marginTop: 6,
-                paddingTop: 5,
-                borderTop: "1px solid #1e293b20",
-              }}
-            >
-              {/* Kopyala */}
-              <button
-                onClick={handleMsgCopy}
-                style={{
-                  fontSize: 10,
-                  padding: "1px 6px",
-                  borderRadius: 4,
-                  border: "1px solid #1e293b",
-                  background: "transparent",
-                  color: msgCopied ? "#22c55e" : "#64748b",
-                  cursor: "pointer",
-                }}
-                title="Yanıtı kopyala"
-              >
-                {msgCopied ? "✓" : "⎘"} {msgCopied ? "Kopyalandı" : "Kopyala"}
-              </button>
-
-              {/* Rating */}
-              {onRate && (
-                <>
-                  <button
-                    onClick={() => onRate(msg.id, "up")}
-                    style={{
-                      fontSize: 12,
-                      padding: "1px 4px",
-                      borderRadius: 4,
-                      border: "none",
-                      background: (msg as any).rating === "up" ? "#22c55e30" : "transparent",
-                      color: (msg as any).rating === "up" ? "#22c55e" : "#64748b",
-                      cursor: "pointer",
-                    }}
-                    title="Beğen"
-                  >
-                    👍
-                  </button>
-                  <button
-                    onClick={() => onRate(msg.id, "down")}
-                    style={{
-                      fontSize: 12,
-                      padding: "1px 4px",
-                      borderRadius: 4,
-                      border: "none",
-                      background: (msg as any).rating === "down" ? "#ef444430" : "transparent",
-                      color: (msg as any).rating === "down" ? "#ef4444" : "#64748b",
-                      cursor: "pointer",
-                    }}
-                    title="Beğenme"
-                  >
-                    👎
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-);
-
-MessageItem.displayName = "MessageItem";
-
-// ─── Session History (localStorage) ──────────────────────────────────────────
-const SESSION_STORAGE_KEY = "corex-chat-sessions";
-
-interface StoredSession {
-  id: string;
-  title: string;
-  createdAt: number;
-  messages: Message[];
-}
-
-function loadSessions(): StoredSession[] {
-  try {
-    return JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) || "[]");
-  } catch {
-    return [];
-  }
-}
-
-function saveSession(session: StoredSession) {
-  const sessions = loadSessions().filter(s => s.id !== session.id);
-  sessions.unshift(session);
-  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessions.slice(0, 20)));
-}
-
-// ─── Ana ChatPanel ────────────────────────────────────────────────────────────
-export default function ChatPanel({
-  messages,
-  isLoading,
-  onSendMessage,
-  pendingActions,
-  onAcceptAction,
-  onRejectAction,
-  onAcceptAllActions,
-  onNewSession,
-  isIndexing,
-  currentFile,
-  projectContext,
-  onStopGeneration,
-  onRegenerateResponse,
-  isStreaming = false,
-  modelName = "Corex AI",
-  isMentorMode = false,
-  onMentorModeToggle,
-  projectPath,
-}: ChatPanelProps) {
-  const [input, setInput] = useState("");
-  const [githubTask, setGithubTask] = useState<GithubAgentTask | null>(null);
-  const [isPendingExpanded, setIsPendingExpanded] = useState(true);
-  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
-  const [ratings, setRatings] = useState<Record<string, "up" | "down">>({});
-  const [showHistory, setShowHistory] = useState(false);
-  const [sessions, setSessions] = useState<StoredSession[]>([]);
-  const [currentSessionId] = useState(() => Math.random().toString(36).slice(2));
-  const [isSingularityMode, setIsSingularityMode] = useState(false);
-  const [showMentorDropdown, setShowMentorDropdown] = useState(false);
-  const [showAgentDropdown, setShowAgentDropdown] = useState(false);
-
-  // Close dropdowns on outside click roughly
-  useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      if (!(e.target as Element).closest(".dropdown-container")) {
-        setShowMentorDropdown(false);
-        setShowAgentDropdown(false);
-      }
-    };
-    document.addEventListener("click", handleOutsideClick);
-    return () => document.removeEventListener("click", handleOutsideClick);
-  }, []);
-
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const isUserScrollingRef = useRef(false);
-  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Mesajları oturuma kaydet
-  useEffect(() => {
-    if (messages.length === 0) return;
-    const firstUserMsg = messages.find(m => m.role === "user");
-    const title = firstUserMsg?.content.slice(0, 40) || "Yeni Sohbet";
-    saveSession({ id: currentSessionId, title, createdAt: Date.now(), messages });
-  }, [messages, currentSessionId]);
-
-  const checkScrollPosition = () => {
-    if (!messagesContainerRef.current) return;
-    const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
-    if (!isAtBottom) {
-      isUserScrollingRef.current = true;
-      if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
-      scrollTimeoutRef.current = setTimeout(() => {
-        isUserScrollingRef.current = false;
-      }, 2000);
-    } else {
-      isUserScrollingRef.current = false;
-    }
-  };
-
-  const scrollToBottom = (force = false) => {
-    if (!messagesEndRef.current || !messagesContainerRef.current) return;
-    if (isUserScrollingRef.current && !force) return;
-
-    // Smooth scroll for normal messages, instant for streaming to stay at the very edge
-    const behavior = isStreaming ? "auto" : "smooth";
-    messagesEndRef.current.scrollIntoView({ behavior, block: "end" });
-  };
-
-  // 🆕 Throttled scroll for streaming (FIX-24)
-  const throttledScrollRef = useRef<number>(0);
-
-  useEffect(() => {
-    // If streaming, scroll with throttle (instantly) to prevent UI jank
-    if (isStreaming) {
-      const now = Date.now();
-      if (now - throttledScrollRef.current > 100) {
-        scrollToBottom();
-        throttledScrollRef.current = now;
-      }
-    } else {
-      // Normal message arrival, smooth scroll
-      const timeout = setTimeout(() => scrollToBottom(), 100);
-      return () => clearTimeout(timeout);
-    }
-  }, [messages, isStreaming]);
-
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + "px";
-    }
-  }, [input]);
-
-  const handleSend = async () => {
-    if (!input.trim() || isLoading || isIndexing) return;
-
-    if (input.startsWith("/github ") && projectPath) {
-      const url = input.replace("/github ", "").trim();
-      githubAgent.runIssueToPRWorkflow(url, projectPath, (task) => {
-        setGithubTask({ ...task });
-      });
-      setInput("");
-      return;
-    }
-
-    if (input.startsWith("/analyze-github") && projectPath) {
-      githubAgent.searchAndAnalyzeRequests(projectContext?.name || "Corex AI", projectPath, (task) => {
-        setGithubTask({ ...task });
-      });
-      setInput("");
-      return;
-    }
-
-    // Doğal dil tetikleyicisi: "github", "özellik", "varmı/var mı", "araştır" gibi anahtar kelimeler
-    const lowerInput = input.toLowerCase();
-    const isGithubQuery = lowerInput.includes("github") &&
-      (lowerInput.includes("özellik") || lowerInput.includes("varmı") || lowerInput.includes("var mı") || lowerInput.includes("araştır"));
-
-    if (isGithubQuery && projectPath) {
-      githubAgent.searchAndAnalyzeRequests(projectContext?.name || "Corex AI", projectPath, (task) => {
-        setGithubTask({ ...task });
-      });
-      // Sadece tetikliyoruz, mesajı da göndermeye devam edebiliriz veya engelleyebiliriz.
-      // Kullanıcının sorusuna AI da yanıt versin diye devam ettiriyoruz.
-    }
-
-    let messageToSend = input;
-    let systemContext = "";
-
-    // 📂 Aktif dosya içeriğini bağlam olarak ekle
-    if (currentFile) {
-      try {
-        const fileContent = await invoke<string>("read_file_content", { path: currentFile });
-        systemContext = `\n\n--- AKTİF DOSYA: ${currentFile} ---\n\`\`\`${currentFile.split(".").pop()}\n${fileContent}\n\`\`\`\n`;
-      } catch (e) {
-        console.error("Aktif dosya okunamadı:", e);
-      }
-    }
-
-    if (uploadedImages.length > 0) {
-      messageToSend = `[IMAGES:${uploadedImages.length}]\n${uploadedImages.map((img, i) => `[IMAGE_${i}]:${img}`).join("\n")}\n\n${input}`;
-    }
-
-    if (isSingularityMode && !messageToSend.trim().toLowerCase().startsWith("/singularity")) {
-      messageToSend = `/singularity ${messageToSend}`;
-    }
-
-    // Mesajı ve bağlamı ayrı ayrı gönder
-    // messageToSend -> UI'da görünür
-    // systemContext -> Sadece AI'ya gider (Prompt'a eklenir)
-    onSendMessage(messageToSend, systemContext);
-
-    setInput("");
-    setUploadedImages([]);
-  };
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
-    Array.from(files).forEach(file => {
-      const reader = new FileReader();
-      reader.onload = event => setUploadedImages(prev => [...prev, event.target?.result as string]);
-      reader.readAsDataURL(file);
-    });
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
-
-  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-
-    Array.from(items).forEach(item => {
-      if (item.type.indexOf("image") !== -1) {
-        const file = item.getAsFile();
-        if (file) {
-          const reader = new FileReader();
-          reader.onload = event => setUploadedImages(prev => [...prev, event.target?.result as string]);
-          reader.readAsDataURL(file);
-        }
-      }
-    });
-  };
-
-  const removeImage = (index: number) =>
-    setUploadedImages(prev => prev.filter((_, i) => i !== index));
-
-  const handleRate = useCallback((id: string, rating: "up" | "down") => {
-    setRatings(prev => ({ ...prev, [id]: prev[id] === rating ? (undefined as any) : rating }));
-  }, []);
-
-  const messagesWithRatings = messages.map(m => ({ ...m, rating: ratings[m.id] }));
+export default function ChatPanel(props: ChatPanelProps) {
+  const {
+    messages,
+    isLoading,
+    onSendMessage,
+    pendingActions,
+    onAcceptAction,
+    onRejectAction,
+    onAcceptAllActions,
+    onNewSession,
+    isIndexing,
+    currentFile,
+    projectContext,
+    onStopGeneration,
+    onRegenerateResponse,
+    isStreaming = false,
+    modelName = "Corex AI",
+    isMentorMode = false,
+    onMentorModeToggle,
+  } = props;
+
+  const logic = useChatLogic(props);
 
   const quickActions = [
     {
@@ -1440,9 +52,8 @@ export default function ChatPanel({
 
   return (
     <div className="h-full flex flex-col bg-[var(--color-background)] relative">
-
       {/* Oturum Geçmişi Dropdown */}
-      {showHistory && (
+      {logic.showHistory && (
         <div
           style={{
             position: "absolute",
@@ -1471,7 +82,7 @@ export default function ChatPanel({
           >
             <span>Sohbet Geçmişi</span>
             <button
-              onClick={() => setShowHistory(false)}
+              onClick={() => logic.setShowHistory(false)}
               style={{
                 background: "none",
                 border: "none",
@@ -1483,14 +94,14 @@ export default function ChatPanel({
               ✕
             </button>
           </div>
-          {sessions.length === 0 ? (
+          {logic.sessions.length === 0 ? (
             <div
               style={{ padding: "16px 12px", color: "#64748b", fontSize: 11, textAlign: "center" }}
             >
               Henüz kayıtlı oturum yok
             </div>
           ) : (
-            sessions.map(s => (
+            logic.sessions.map(s => (
               <div
                 key={s.id}
                 style={{
@@ -1498,7 +109,7 @@ export default function ChatPanel({
                   cursor: "pointer",
                   borderBottom: "1px solid #1e293b10",
                 }}
-                onClick={() => setShowHistory(false)}
+                onClick={() => logic.setShowHistory(false)}
                 className="hover:bg-neutral-800"
               >
                 <div
@@ -1523,8 +134,8 @@ export default function ChatPanel({
 
       {/* Messages */}
       <div
-        ref={messagesContainerRef}
-        onScroll={checkScrollPosition}
+        ref={logic.messagesContainerRef}
+        onScroll={logic.checkScrollPosition}
         className="flex-1 overflow-y-auto px-3 py-2 space-y-2 min-h-0 custom-scrollbar"
       >
         {messages.length === 0 && (
@@ -1545,11 +156,11 @@ export default function ChatPanel({
           </div>
         )}
         <div className="space-y-2">
-          {messagesWithRatings.map(msg => (
+          {logic.messagesWithRatings.map(msg => (
             <MessageItem
               key={msg.id}
               msg={msg}
-              onRate={handleRate}
+              onRate={logic.handleRate}
               onAutoFix={err => onSendMessage(`Please fix this terminal error: ${err}`)}
             />
           ))}
@@ -1576,23 +187,23 @@ export default function ChatPanel({
               </div>
             </div>
           )}
-          {githubTask && (
+          {logic.githubTask && (
             <div className="p-3 bg-neutral-900/50 border border-blue-500/30 rounded-lg my-2 font-mono">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[10px] font-bold text-blue-400">🐙 GITHUB AGENT</span>
-                <span className={`text-[9px] px-1.5 py-0.5 rounded ${githubTask.status === 'done' ? 'bg-green-600' : githubTask.status === 'failed' ? 'bg-red-600' : 'bg-blue-600'} text-white`}>
-                  {githubTask.status.toUpperCase()}
+                <span className={`text-[9px] px-1.5 py-0.5 rounded ${logic.githubTask.status === 'done' ? 'bg-green-600' : logic.githubTask.status === 'failed' ? 'bg-red-600' : 'bg-blue-600'} text-white`}>
+                  {logic.githubTask.status.toUpperCase()}
                 </span>
               </div>
               <div className="max-h-32 overflow-y-auto text-[9px] text-neutral-300 space-y-1">
-                {githubTask.logs.map((log, i) => (
+                {logic.githubTask.logs.map((log, i) => (
                   <div key={i}>{log}</div>
                 ))}
               </div>
-              {githubTask.suggestions && githubTask.suggestions.length > 0 && (
+              {logic.githubTask.suggestions && logic.githubTask.suggestions.length > 0 && (
                 <div className="mt-2 space-y-1">
                   <div className="text-[9px] text-blue-400 font-bold mb-1">💡 Önerilen Özellikler:</div>
-                  {githubTask.suggestions.map((suggestion, i) => (
+                  {logic.githubTask.suggestions.map((suggestion, i) => (
                     <button
                       key={i}
                       onClick={() => onSendMessage(`Lütfen şu özelliği implement et: ${suggestion}`)}
@@ -1603,9 +214,9 @@ export default function ChatPanel({
                   ))}
                 </div>
               )}
-              {githubTask.status === 'done' && (
+              {logic.githubTask.status === 'done' && (
                 <button
-                  onClick={() => setGithubTask(null)}
+                  onClick={() => logic.setGithubTask(null)}
                   className="mt-2 w-full py-1 bg-neutral-800 hover:bg-neutral-700 text-[10px] text-neutral-400 rounded"
                 >
                   Kapat
@@ -1614,18 +225,18 @@ export default function ChatPanel({
             </div>
           )}
         </div>
-        <div ref={messagesEndRef} />
+        <div ref={logic.messagesEndRef} />
       </div>
 
       {/* Pending Actions */}
       {pendingActions.length > 0 && (
         <div className="flex-shrink-0 border-t border-neutral-800">
           <button
-            onClick={() => setIsPendingExpanded(!isPendingExpanded)}
+            onClick={() => logic.setIsPendingExpanded(!logic.isPendingExpanded)}
             className="w-full px-3 py-2 flex items-center justify-between hover:bg-[var(--color-surface)]"
           >
             <div className="flex items-center gap-2 text-xs font-semibold text-white">
-              <span className={`transition-transform ${isPendingExpanded ? "" : "-rotate-90"}`}>
+              <span className={`transition-transform ${logic.isPendingExpanded ? "" : "-rotate-90"}`}>
                 ▼
               </span>
               💡 Bekleyen Değişiklikler ({pendingActions.length})
@@ -1642,7 +253,7 @@ export default function ChatPanel({
               </button>
             )}
           </button>
-          {isPendingExpanded && (
+          {logic.isPendingExpanded && (
             <div className="max-h-[200px] overflow-y-auto p-2 space-y-2 bg-[var(--color-background)]">
               {pendingActions.map(action => (
                 <DiffViewer
@@ -1663,21 +274,21 @@ export default function ChatPanel({
       <div className="flex-shrink-0 border-t border-neutral-800 p-2 bg-[var(--color-background)]">
         <div className="relative">
           <SmartSuggestions
-            input={input}
+            input={logic.input}
             currentFile={currentFile}
             projectContext={projectContext}
-            onSuggestionSelect={setInput}
+            onSuggestionSelect={logic.setInput}
           />
-          {uploadedImages.length > 0 && (
+          {logic.uploadedImages.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-2">
-              {uploadedImages.map((img, index) => (
+              {logic.uploadedImages.map((img, index) => (
                 <div key={index} className="relative group">
                   <img
                     src={img}
                     className="w-16 h-16 object-cover rounded border-[var(--color-border)]"
                   />
                   <button
-                    onClick={() => removeImage(index)}
+                    onClick={() => logic.removeImage(index)}
                     className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full flex items-center justify-center text-white text-[10px]"
                   >
                     ×
@@ -1687,24 +298,24 @@ export default function ChatPanel({
             </div>
           )}
           <textarea
-            ref={textareaRef}
-            className={`w-full bg-[var(--color-hover)] border transition-all duration-300 rounded-lg px-2.5 py-1.5 pr-10 text-xs outline-none resize-none text-[var(--color-text)] placeholder-neutral-500 ${isSingularityMode ? 'border-purple-500/50 shadow-[0_0_15px_rgba(168,85,247,0.15)] focus:border-purple-400' : 'border-[var(--color-border)] focus:neon-border'}`}
-            placeholder={isIndexing ? "🧠 Proje indeksleniyor..." : isSingularityMode ? "👑 Otonom Agent görev için hazır..." : "✨ AI ile sohbet et..."}
+            ref={logic.textareaRef}
+            className={`w-full bg-[var(--color-hover)] border transition-all duration-300 rounded-lg px-2.5 py-1.5 pr-10 text-xs outline-none resize-none text-[var(--color-text)] placeholder-neutral-500 ${logic.isSingularityMode ? 'border-purple-500/50 shadow-[0_0_15px_rgba(168,85,247,0.15)] focus:border-purple-400' : 'border-[var(--color-border)] focus:neon-border'}`}
+            placeholder={isIndexing ? "🧠 Proje indeksleniyor..." : logic.isSingularityMode ? "👑 Otonom Agent görev için hazır..." : "✨ AI ile sohbet et..."}
             rows={1}
-            value={input}
-            onChange={e => setInput(e.target.value)}
+            value={logic.input}
+            onChange={e => logic.setInput(e.target.value)}
             onKeyDown={e => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                handleSend();
+                logic.handleSend();
               }
             }}
-            onPaste={handlePaste}
+            onPaste={logic.handlePaste}
             disabled={isLoading || isIndexing}
           />
           <button
-            onClick={handleSend}
-            disabled={isLoading || isIndexing || !input.trim()}
+            onClick={logic.handleSend}
+            disabled={isLoading || isIndexing || !logic.input.trim()}
             className="absolute right-1.5 bottom-1.5 p-1.5 rounded-md bg-[var(--color-primary)] text-white disabled:opacity-50"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1727,22 +338,22 @@ export default function ChatPanel({
             <div className="relative dropdown-container">
               <button
                 onClick={() => {
-                  setShowMentorDropdown(!showMentorDropdown);
-                  setShowAgentDropdown(false);
+                  logic.setShowMentorDropdown(!logic.showMentorDropdown);
+                  logic.setShowAgentDropdown(false);
                 }}
-                className={`flex items-center gap-1 px-2 py-1 cursor-pointer rounded transition-all group ${showMentorDropdown ? 'bg-white/10 text-white' : 'hover:bg-white/5 text-neutral-400'}`}
+                className={`flex items-center gap-1 px-2 py-1 cursor-pointer rounded transition-all group ${logic.showMentorDropdown ? 'bg-white/10 text-white' : 'hover:bg-white/5 text-neutral-400'}`}
                 title="Model / Mentor Seçimi"
               >
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`opacity-50 transition-transform ${showMentorDropdown ? 'rotate-180' : ''}`}><path d="M18 15l-6-6-6 6" /></svg>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`opacity-50 transition-transform ${logic.showMentorDropdown ? 'rotate-180' : ''}`}><path d="M18 15l-6-6-6 6" /></svg>
                 <span className={isMentorMode ? "text-blue-400 drop-shadow-md" : "text-neutral-400"}>{isMentorMode ? "Mentor" : "Fast"}</span>
               </button>
 
-              {showMentorDropdown && (
+              {logic.showMentorDropdown && (
                 <div className="absolute bottom-full left-0 mb-1 w-32 bg-[#181818] border border-neutral-800 rounded-lg shadow-xl overflow-hidden z-50 py-1 font-sans">
                   <button
                     onClick={() => {
                       if (onMentorModeToggle) onMentorModeToggle(false);
-                      setShowMentorDropdown(false);
+                      logic.setShowMentorDropdown(false);
                     }}
                     className={`w-full text-left px-3 py-1.5 text-[11px] transition-colors flex items-center gap-2 ${!isMentorMode ? 'bg-white/10 text-white' : 'text-neutral-400 hover:bg-white/5 hover:text-white'}`}
                   >
@@ -1751,7 +362,7 @@ export default function ChatPanel({
                   <button
                     onClick={() => {
                       if (onMentorModeToggle) onMentorModeToggle(true);
-                      setShowMentorDropdown(false);
+                      logic.setShowMentorDropdown(false);
                     }}
                     className={`w-full text-left px-3 py-1.5 text-[11px] transition-colors flex items-center gap-2 ${isMentorMode ? 'bg-blue-500/20 text-blue-400' : 'text-neutral-400 hover:bg-white/5 hover:text-white'}`}
                   >
@@ -1764,33 +375,33 @@ export default function ChatPanel({
             <div className="relative dropdown-container">
               <button
                 onClick={() => {
-                  setShowAgentDropdown(!showAgentDropdown);
-                  setShowMentorDropdown(false);
+                  logic.setShowAgentDropdown(!logic.showAgentDropdown);
+                  logic.setShowMentorDropdown(false);
                 }}
-                className={`flex items-center gap-1 px-2 py-1 cursor-pointer rounded transition-all group ${showAgentDropdown ? 'bg-white/10 text-white' : 'hover:bg-white/5 text-neutral-400'}`}
+                className={`flex items-center gap-1 px-2 py-1 cursor-pointer rounded transition-all group ${logic.showAgentDropdown ? 'bg-white/10 text-white' : 'hover:bg-white/5 text-neutral-400'}`}
                 title="Ajan Modu Seçimi"
               >
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`opacity-50 transition-transform ${showAgentDropdown ? 'rotate-180' : ''}`}><path d="M18 15l-6-6-6 6" /></svg>
-                <span className={isSingularityMode ? "text-purple-400 drop-shadow-md" : "text-neutral-400"}>{isSingularityMode ? "Agent Otonom" : modelName}</span>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`opacity-50 transition-transform ${logic.showAgentDropdown ? 'rotate-180' : ''}`}><path d="M18 15l-6-6-6 6" /></svg>
+                <span className={logic.isSingularityMode ? "text-purple-400 drop-shadow-md" : "text-neutral-400"}>{logic.isSingularityMode ? "Agent Otonom" : modelName}</span>
               </button>
 
-              {showAgentDropdown && (
+              {logic.showAgentDropdown && (
                 <div className="absolute bottom-full left-0 mb-1 w-40 bg-[#181818] border border-neutral-800 rounded-lg shadow-xl overflow-hidden z-50 py-1 font-sans">
                   <button
                     onClick={() => {
-                      setIsSingularityMode(false);
-                      setShowAgentDropdown(false);
+                      logic.setIsSingularityMode(false);
+                      logic.setShowAgentDropdown(false);
                     }}
-                    className={`w-full text-left px-3 py-1.5 text-[11px] transition-colors flex items-center gap-2 ${!isSingularityMode ? 'bg-white/10 text-white' : 'text-neutral-400 hover:bg-white/5 hover:text-white'}`}
+                    className={`w-full text-left px-3 py-1.5 text-[11px] transition-colors flex items-center gap-2 ${!logic.isSingularityMode ? 'bg-white/10 text-white' : 'text-neutral-400 hover:bg-white/5 hover:text-white'}`}
                   >
                     💬 Normal AI
                   </button>
                   <button
                     onClick={() => {
-                      setIsSingularityMode(true);
-                      setShowAgentDropdown(false);
+                      logic.setIsSingularityMode(true);
+                      logic.setShowAgentDropdown(false);
                     }}
-                    className={`w-full text-left px-3 py-1.5 text-[11px] transition-colors flex items-center gap-2 ${isSingularityMode ? 'bg-purple-500/20 text-purple-400 font-medium' : 'text-neutral-400 hover:bg-white/5 hover:text-white'}`}
+                    className={`w-full text-left px-3 py-1.5 text-[11px] transition-colors flex items-center gap-2 ${logic.isSingularityMode ? 'bg-purple-500/20 text-purple-400 font-medium' : 'text-neutral-400 hover:bg-white/5 hover:text-white'}`}
                   >
                     👑 Agent Otonom
                   </button>
@@ -1799,18 +410,18 @@ export default function ChatPanel({
             </div>
 
             <button
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => logic.fileInputRef.current?.click()}
               className="px-2 py-1 cursor-pointer hover:bg-white/5 transition-colors flex items-center justify-center rounded ml-1 text-neutral-500 hover:text-neutral-300"
               title="Görsel Yükle"
             >
               📷
             </button>
             <input
-              ref={fileInputRef}
+              ref={logic.fileInputRef}
               type="file"
               accept="image/*"
               multiple
-              onChange={handleImageUpload}
+              onChange={logic.handleImageUpload}
               className="hidden"
             />
           </div>
@@ -1822,8 +433,8 @@ export default function ChatPanel({
             )}
             <button
               onClick={() => {
-                setSessions(loadSessions());
-                setShowHistory(h => !h);
+                logic.refreshSessions();
+                logic.setShowHistory(h => !h);
               }}
               className="px-2 py-1 text-[10px] text-neutral-500 hover:text-neutral-300 rounded transition-colors"
               title="Sohbet Geçmişi"
@@ -1846,4 +457,3 @@ export default function ChatPanel({
     </div>
   );
 }
-
