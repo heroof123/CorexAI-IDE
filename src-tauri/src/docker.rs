@@ -1,6 +1,6 @@
-use bollard::Docker;
-use bollard::container::ListContainersOptions;
-use bollard::image::ListImagesOptions;
+// Docker integration disabled due to dependency issues
+// Re-enable when bollard crate issues are resolved
+
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize)]
@@ -23,72 +23,22 @@ pub struct ImageInfo {
 
 #[tauri::command]
 pub async fn docker_list_containers() -> Result<Vec<ContainerInfo>, String> {
-    let docker = Docker::connect_with_local_defaults().map_err(|e| e.to_string())?;
-    let options = Some(ListContainersOptions::<String> {
-        all: true,
-        ..Default::default()
-    });
-
-    let containers = docker.list_containers(options).await.map_err(|e| e.to_string())?;
-    
-    let mut result = Vec::new();
-    for c in containers {
-        result.push(ContainerInfo {
-            id: c.id.unwrap_or_default(),
-            name: c.names.unwrap_or_default().join(", "),
-            image: c.image.unwrap_or_default(),
-            status: c.status.unwrap_or_default(),
-            state: c.state.unwrap_or_default(),
-        });
-    }
-
-    Ok(result)
+    Err("Docker integration temporarily disabled".to_string())
 }
 
 #[tauri::command]
 pub async fn docker_list_images() -> Result<Vec<ImageInfo>, String> {
-    let docker = Docker::connect_with_local_defaults().map_err(|e| e.to_string())?;
-    let options = Some(ListImagesOptions::<String> {
-        all: true,
-        ..Default::default()
-    });
-
-    let images = docker.list_images(options).await.map_err(|e| e.to_string())?;
-    
-    let mut result = Vec::new();
-    for img in images {
-        result.push(ImageInfo {
-            id: img.id,
-            repository: img.repo_tags.get(0).map(|s| s.split(':').next().unwrap_or("unknown")).unwrap_or("unknown").to_string(),
-            tag: img.repo_tags.get(0).map(|s| s.split(':').last().unwrap_or("latest")).unwrap_or("latest").to_string(),
-            size: img.size,
-            created: img.created,
-        });
-    }
-
-    Ok(result)
+    Err("Docker integration temporarily disabled".to_string())
 }
 
 #[tauri::command]
-pub async fn docker_container_action(id: String, action: String) -> Result<(), String> {
-    let docker = Docker::connect_with_local_defaults().map_err(|e| e.to_string())?;
-    
-    match action.as_str() {
-        "start" => docker.start_container::<String>(&id, None).await.map_err(|e| e.to_string())?,
-        "stop" => docker.stop_container(&id, None).await.map_err(|e| e.to_string())?,
-        "restart" => docker.restart_container(&id, None).await.map_err(|e| e.to_string())?,
-        "remove" => docker.remove_container(&id, None).await.map_err(|e| e.to_string())?,
-        _ => return Err("Invalid action".to_string()),
-    }
-
-    Ok(())
+pub async fn docker_container_action(_id: String, _action: String) -> Result<(), String> {
+    Err("Docker integration temporarily disabled".to_string())
 }
 
 #[tauri::command]
-pub async fn docker_remove_image(id: String) -> Result<(), String> {
-    let docker = Docker::connect_with_local_defaults().map_err(|e| e.to_string())?;
-    docker.remove_image(&id, None, None).await.map_err(|e| e.to_string())?;
-    Ok(())
+pub async fn docker_remove_image(_id: String) -> Result<(), String> {
+    Err("Docker integration temporarily disabled".to_string())
 }
 
 #[tauri::command]

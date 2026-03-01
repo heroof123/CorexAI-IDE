@@ -631,7 +631,7 @@ fn detect_gpu_vram() -> f64 {
     // 🍎 Apple Silicon - Mac'lerde genelde unified memory var
     #[cfg(target_os = "macos")]
     {
-        use sysinfo::{System, SystemExt};
+        use sysinfo::System;
         let mut sys = System::new_all();
         sys.refresh_all();
         let total_ram_gb = sys.total_memory() as f64 / (1024.0 * 1024.0 * 1024.0);

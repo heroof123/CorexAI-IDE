@@ -16,18 +16,17 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
-tauri-plugin-store = "2"
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
 reqwest = { version = "0.11", features = ["json", "stream"] }
 log = "0.4"
 env_logger = "0.11"
-encoding_rs = "0.8"
-walkdir = "2"
+sha2 = "0.10"  # 🔐 SHA256 checksum verification for secure model downloads
+hex = "0.4"    # Hex encoding for hash display
 
 # 🆕 GGUF Model Support (CPU-only by default, CUDA/Vulkan optional)
-llama-cpp-2 = { version = "0.1.133", features = [] }
+llama-cpp-2 = { version = "0.1.77", features = [] }
 tokio = { version = "1", features = ["full"] }
 futures-util = "0.3"
 lazy_static = "1.4"
@@ -35,9 +34,6 @@ once_cell = "1.20"
 base64 = "0.21" # 🆕 Vision AI - Base64 image decoding
 rand = "0.8" # 🆕 Random sampling for temperature-based generation
 sysinfo = "0.30" # 🆕 Sistem bilgisi (RAM, CPU) almak için
-ssh2 = "0.9" # 🆕 SSH/SFTP bağlantıları için
-bollard = "0.15" # 🆕 Docker API entegrasyonu için
-if-addrs = "0.7" # 🆕 Network interface tespiti için
 
 # 🆕 WebSocket Real-time Collaboration
 tokio-tungstenite = "0.23"
@@ -49,9 +45,6 @@ url = "2.5"
 open = "5.0"
 
 # Vector Database & RAG Pipeline (AI-Native IDE Evolution)
-lancedb = "0.10"
-rig-core = "0.3"
-rig-lancedb = "0.1"
 chrono = { version = "=0.4.38", default-features = false, features = ["clock"] }  # Pin to avoid arrow-arith conflict
 arrow-array = "52.2"
 arrow-schema = "52.2"
@@ -64,11 +57,14 @@ tree-sitter-rust = "0.21"
 tree-sitter-go = "0.21"
 lru = "0.12"  # LRU cache for AST caching
 regex = "1.10"  # Regex for fallback parsing
-fastembed = "5.11.0"
+ssh2 = "0.9"  # SSH operations
+walkdir = "2"  # Recursive directory traversal
+encoding_rs = "0.8"  # Character encoding
+if-addrs = "0.10"  # Network interface addresses
 
 [features]
-default = ["cuda"]  # 🎮 NVIDIA GPU için CUDA (senin sistem)
-# default = ["vulkan"]  # 🌐 Evrensel GPU desteği (dağıtım için)
-# default = []  # 💻 CPU-only (GPU olmayan sistemler için)
+default = []  # 💻 CPU-only by default (cross-platform compatibility)
+# cuda = ["llama-cpp-2/cuda"]  # 🎮 NVIDIA GPU - optional feature
+# vulkan = ["llama-cpp-2/vulkan"]  # 🌐 Evrensel GPU desteği
 cuda = ["llama-cpp-2/cuda"]
 vulkan = ["llama-cpp-2/vulkan"]

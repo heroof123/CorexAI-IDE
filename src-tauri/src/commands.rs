@@ -1,17 +1,50 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::env;
+use std::time::Duration;
 
 use reqwest::Client;
 use serde_json::json;
 use log::{info, error};
 use tauri::{AppHandle, Manager, Emitter};
-use crate::process_monitor::MonitorState;
 
 // --------------------
 // SYSTEM UTILITIES
 // --------------------
+
+/// Validate file path to prevent directory traversal attacks
+/// Ensures path is within the project root directory
+fn validate_file_path(path: &str) -> Result<PathBuf, String> {
+    let project_root = std::env::current_dir()
+        .map_err(|_| "Could not determine project root".to_string())?;
+    
+    let requested = PathBuf::from(path);
+    let full_path = if requested.is_absolute() {
+        requested
+    } else {
+        project_root.join(&requested)
+    };
+    
+    // Canonicalize to resolve .. and symlinks
+    let canonical = full_path
+        .canonicalize()
+        .map_err(|e| format!("Invalid path: {}", e))?;
+    
+    let canonical_root = project_root
+        .canonicalize()
+        .map_err(|_| "Could not canonicalize project root".to_string())?;
+    
+    // Ensure canonical path is within project root
+    if !canonical.starts_with(&canonical_root) {
+        return Err(format!(
+            "🔒 Security: Path traversal denied - must be within project directory"
+        ));
+    }
+    
+    Ok(canonical)
+}
+
 #[tauri::command]
 pub fn get_home_dir() -> Result<String, String> {
     env::var("USERPROFILE")
@@ -85,11 +118,11 @@ pub async fn get_all_files(path: String) -> Result<Vec<String>, String> {
     
     for entry in WalkDir::new(&path)
         .into_iter()
-        .filter_entry(|e| {
+        .filter_entry(|e: &walkdir::DirEntry| {
             let name = e.file_name().to_str().unwrap_or("");
             !ignored.contains(&name)
         })
-        .filter_map(|e| e.ok()) 
+        .filter_map(|e: Result<walkdir::DirEntry, walkdir::Error>| e.ok()) 
     {
         if entry.file_type().is_file() {
             if let Some(p) = entry.path().to_str() {
@@ -124,7 +157,10 @@ pub fn read_file(path: String) -> Result<String, String> {
 
     info!("📖 Dosya okunuyor: {}", path);
     
-    let file = File::open(&path).map_err(|e| {
+    // Validate path to prevent directory traversal
+    let validated_path = validate_file_path(&path)?;
+    
+    let file = File::open(&validated_path).map_err(|e| {
         error!("❌ Dosya açma hatası: {}", e);
         e.to_string()
     })?;
@@ -146,7 +182,11 @@ pub fn read_file(path: String) -> Result<String, String> {
 #[tauri::command]
 pub fn write_file(path: String, content: String) -> Result<(), String> {
     info!("💾 Dosya yazılıyor: {}", path);
-    fs::write(&path, content).map_err(|e| {
+    
+    // Validate path to prevent directory traversal
+    let validated_path = validate_file_path(&path)?;
+    
+    fs::write(&validated_path, content).map_err(|e| {
         error!("❌ Dosya yazma hatası: {}", e);
         e.to_string()
     })
@@ -159,12 +199,15 @@ pub fn write_file(path: String, content: String) -> Result<(), String> {
 pub fn create_file(path: String, content: String) -> Result<(), String> {
     info!("📝 Yeni dosya oluşturuluyor: {}", path);
     
+    // Validate path to prevent directory traversal
+    let validated_path = validate_file_path(&path)?;
+    
     // Klasörü oluştur (eğer yoksa)
-    if let Some(parent) = Path::new(&path).parent() {
+    if let Some(parent) = validated_path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     
-    fs::write(&path, content).map_err(|e| {
+    fs::write(&validated_path, content).map_err(|e| {
         error!("❌ Dosya oluşturma hatası: {}", e);
         e.to_string()
     })
@@ -195,7 +238,11 @@ pub async fn chat_with_specific_ai(message: String, model_type: String) -> Resul
     info!("🔵 {}:{} modeline istek gönderiliyor...", model_type, port);
     info!("📤 Mesaj: {}", message);
 
-    let client = Client::new();
+    let client = Client::builder()
+        .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("HTTP client kurulumu başarısız: {}", e))?;
     let endpoint = format!("http://127.0.0.1:{}/v1/chat/completions", port);
 
     let body = json!({
@@ -291,7 +338,11 @@ pub async fn chat_with_dynamic_ai(
     info!("📤 Mesaj: {}", message);
     info!("📚 History: {} mesaj", conversation_history.len());
 
-    let client = Client::new();
+    let client = Client::builder()
+        .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("HTTP client kurulumu başarısız: {}", e))?;
     let endpoint = format!("{}/chat/completions", provider_config.base_url);
 
     // Headers oluştur
@@ -475,12 +526,8 @@ const ALLOWED_COMMAND_LIST: &[&str] = &[
 ];
 
 #[tauri::command]
-pub fn execute_terminal_command(command: String, path: String, app: AppHandle) -> Result<serde_json::Value, String> {
+pub fn execute_terminal_command(command: String, path: String, _app: AppHandle) -> Result<serde_json::Value, String> {
     info!("🔧 Komut çalıştırılıyor: {} (dizin: {})", command, path);
-    
-    // Get monitor if initialized
-    let monitor_state: tauri::State<MonitorState> = app.state();
-    let monitor_lock = monitor_state.0.lock().unwrap_or_else(|e| e.into_inner());
     
     // Command validation
     let first_word = command.split_whitespace().next().unwrap_or("");
@@ -497,12 +544,21 @@ pub fn execute_terminal_command(command: String, path: String, app: AppHandle) -
         ));
     }
 
-    // Sanitize dangerous characters
-    let dangerous = [";", "&&", "||", "|", "`", "$(", ">", ">>", "<"];
-    for d in &dangerous {
-        if command.contains(d) {
-            return Err(format!("Güvenlik: '{}' karakteri yasak", d));
+    // Sanitize dangerous characters and prevent shell injection
+    // Disallow shell metacharacters, command separators, and variable expansion
+    let dangerous_patterns = [
+        ";", "&&", "||", "|", "`", "$(", ">", ">>", "<<", "<",
+        "\n", "\r", "&", "#", "!", "$", "*", "?", "~", "'", "\"", "{", "}", "[", "]"
+    ];
+    for pattern in &dangerous_patterns {
+        if command.contains(pattern) {
+            return Err(format!("🔒 Güvenlik: '{}' karakteri yasak (Shell Injection koruması)", pattern));
         }
+    }
+    
+    // Additional validation: command must not be empty
+    if command.trim().is_empty() {
+        return Err("Komut boş olamaz".to_string());
     }
 
     #[cfg(target_os = "windows")]
@@ -523,51 +579,39 @@ pub fn execute_terminal_command(command: String, path: String, app: AppHandle) -
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         
-        // Monitor for errors
-        if let Some(m) = monitor_lock.as_ref() {
-            if !output.status.success() {
-                m.monitor_output(&stderr);
-            } else {
-                m.monitor_output(&stdout);
-            }
-        }
-
-        Ok(serde_json::json!({
+        // Return output
+        return Ok(json!({
             "success": output.status.success(),
             "stdout": stdout,
-            "stderr": stderr
-        }))
+            "stderr": stderr,
+            "exit_code": output.status.code()
+        }));
     }
-    
+
     #[cfg(not(target_os = "windows"))]
     {
-        let output = Command::new("sh")
-            .arg("-c")
-            .arg(&command)
-            .current_dir(if path.is_empty() { "." } else { &path })
-            .output()
-            .map_err(|e| {
-                error!("❌ Komut çalıştırma hatası: {}", e);
-                format!("Komut çalıştırılamadı: {}", e)
-            })?;
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c");
+        cmd.arg(&command);
+        
+        if !path.is_empty() {
+            cmd.current_dir(&path);
+        }
+        
+        let output = cmd.output().map_err(|e| {
+            error!("❌ Komut çalıştırma hatası: {}", e);
+            format!("Komut çalıştırılamadı: {}", e)
+        })?;
         
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         
-        // Monitor for errors (macOS/Linux)
-        if let Some(m) = monitor_lock.as_ref() {
-            if !output.status.success() {
-                m.monitor_output(&stderr);
-            } else {
-                m.monitor_output(&stdout);
-            }
-        }
-
-        Ok(serde_json::json!({
+        return Ok(json!({
             "success": output.status.success(),
             "stdout": stdout,
-            "stderr": stderr
-        }))
+            "stderr": stderr,
+            "exit_code": output.status.code()
+        }));
     }
 }
 
@@ -578,7 +622,11 @@ pub fn execute_terminal_command(command: String, path: String, app: AppHandle) -
 pub async fn create_embedding_bge(text: String, endpoint: Option<String>) -> Result<Vec<f32>, String> {
     info!("🧩 BGE Embedding oluşturuluyor...");
     
-    let client = Client::new();
+    let client = Client::builder()
+        .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("HTTP client kurulumu başarısız: {}", e))?;
     let final_endpoint = endpoint.unwrap_or_else(|| "http://127.0.0.1:1234/v1/embeddings".to_string());
     info!("📡 Embedding endpoint: {}", final_endpoint);
 
@@ -1060,7 +1108,15 @@ pub async fn download_gguf_model(
     info!("🔵 GGUF model indiriliyor: {}", url);
     info!("📁 Hedef: {}", destination);
 
-    let client = Client::new();
+    // Validate path to prevent directory traversal
+    let validated_path = validate_file_path(&destination)?;
+    let destination_str = validated_path.to_string_lossy().to_string();
+
+    let client = Client::builder()
+        .timeout(Duration::from_secs(300))  // 5 dakika - dosya indirilmesi için
+        .connect_timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("HTTP client kurulumu başarısız: {}", e))?;
     
     // İndirme başlat
     let response = client.get(&url)
@@ -1076,13 +1132,17 @@ pub async fn download_gguf_model(
     info!("📊 Toplam boyut: {} bytes", total_size);
 
     // Dosyayı oluştur
-    let dest_path = Path::new(&destination);
+    let dest_path = Path::new(&destination_str);
     if let Some(parent) = dest_path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Klasör oluşturulamadı: {}", e))?;
     }
 
-    let mut file = fs::File::create(&destination)
+    let mut file = fs::File::create(&destination_str)
         .map_err(|e| format!("Dosya oluşturulamadı: {}", e))?;
+
+    // SHA256 hasher oluştur
+    use sha2::{Sha256, Digest};
+    let mut hasher = Sha256::new();
 
     // Stream ile indir
     let mut downloaded: u64 = 0;
@@ -1096,6 +1156,10 @@ pub async fn download_gguf_model(
 
     while let Some(chunk_result) = stream.next().await {
         let chunk = chunk_result.map_err(|e| format!("İndirme hatası: {}", e))?;
+        
+        // Hash'e chunk ekle
+        hasher.update(&chunk);
+        
         file.write_all(&chunk).map_err(|e| format!("Yazma hatası: {}", e))?;
         
         downloaded += chunk.len() as u64;
@@ -1128,43 +1192,42 @@ pub async fn download_gguf_model(
         }
     }
 
+    // SHA256 hash'ini hesapla
+    let hash_result = hasher.finalize();
+    let hash_hex = hex::encode(hash_result);
+    
+    info!("✅ İndirme tamamlandı: {}", destination_str);
+    info!("🔐 SHA256: {}", hash_hex);
+
     // Son progress'i gönder (100%)
     let _ = app.emit("download-progress", json!({
         "url": url.clone(),
         "downloaded": total_size,
         "total": total_size,
-        "progress": 100.0
+        "progress": 100.0,
+        "sha256": hash_hex
     }));
 
-    info!("✅ İndirme tamamlandı: {}", destination);
-    Ok(destination)
+    Ok(destination_str)
 }
-
 
 // --------------------
 // VECTOR DATABASE COMMANDS (AI-Native IDE Evolution)
 // --------------------
 
 use crate::vector_db::{VectorDB, CodeChunk};
-use std::sync::Arc;
-use tokio::sync::Mutex;
-
-// Global VectorDB instance
-lazy_static::lazy_static! {
-    static ref VECTOR_DB: Arc<Mutex<Option<VectorDB>>> = Arc::new(Mutex::new(None));
-}
 
 /// Initialize vector database
 #[tauri::command]
-pub async fn init_vector_db(db_path: String) -> Result<(), String> {
+pub async fn init_vector_db(db_path: String, app: AppHandle) -> Result<(), String> {
     info!("🔵 Vector DB başlatılıyor: {}", db_path);
     
     let db = VectorDB::init(&db_path)
         .await
         .map_err(|e| format!("Vector DB başlatılamadı: {}", e))?;
     
-    let mut global_db: tokio::sync::MutexGuard<Option<VectorDB>> = VECTOR_DB.lock().await;
-    *global_db = Some(db);
+    // Register with Tauri state management
+    app.manage(db);
     
     info!("✅ Vector DB başlatıldı");
     Ok(())
@@ -1172,16 +1235,14 @@ pub async fn init_vector_db(db_path: String) -> Result<(), String> {
 
 /// Search vector database for similar code chunks
 #[tauri::command]
-pub async fn vector_search(query: String, top_k: u32, endpoint: Option<String>) -> Result<Vec<CodeChunk>, String> {
+pub async fn vector_search(query: String, top_k: u32, endpoint: Option<String>, app: AppHandle) -> Result<Vec<CodeChunk>, String> {
     info!("🔍 Vector search: {} (top_k: {})", query, top_k);
     
     // Create embedding for query
     let query_embedding = create_embedding_bge(query, endpoint).await?;
     
-    // Get VectorDB instance
-    let global_db: tokio::sync::MutexGuard<Option<VectorDB>> = VECTOR_DB.lock().await;
-    let db = global_db.as_ref()
-        .ok_or("Vector DB başlatılmamış. Önce init_vector_db çağırın.")?;
+    // Get VectorDB instance from app state
+    let db = app.state::<VectorDB>();
     
     // Search
     let results = db.query(query_embedding, top_k as usize, None)
@@ -1194,7 +1255,7 @@ pub async fn vector_search(query: String, top_k: u32, endpoint: Option<String>) 
 
 /// Index a file in the vector database
 #[tauri::command]
-pub async fn index_file_vector(file_path: String, endpoint: Option<String>) -> Result<(), String> {
+pub async fn index_file_vector(file_path: String, endpoint: Option<String>, app: AppHandle) -> Result<(), String> {
     info!("📇 Dosya indeksleniyor: {}", file_path);
     
     // Read file content
@@ -1217,10 +1278,8 @@ pub async fn index_file_vector(file_path: String, endpoint: Option<String>) -> R
             .as_secs(),
     };
     
-    // Get VectorDB instance
-    let global_db: tokio::sync::MutexGuard<Option<VectorDB>> = VECTOR_DB.lock().await;
-    let db = global_db.as_ref()
-        .ok_or("Vector DB başlatılmamış. Önce init_vector_db çağırın.")?;
+    // Get VectorDB instance from app state
+    let db = app.state::<VectorDB>();
     
     // Upsert to vector DB
     db.upsert(vec![chunk])
@@ -1239,7 +1298,8 @@ pub async fn index_manual_vector(
     content: String,
     chunk_type: String,
     symbol_name: Option<String>,
-    endpoint: Option<String>
+    endpoint: Option<String>,
+    app: AppHandle
 ) -> Result<(), String> {
     info!("📇 Manuel veri indeksleniyor: {} ({})", id, chunk_type);
     
@@ -1260,10 +1320,8 @@ pub async fn index_manual_vector(
             .as_secs(),
     };
     
-    // Get VectorDB instance
-    let global_db = VECTOR_DB.lock().await;
-    let db = global_db.as_ref()
-        .ok_or("Vector DB başlatılmamış.")?;
+    // Get VectorDB instance from app state
+    let db = app.state::<VectorDB>();
     
     // Upsert
     db.upsert(vec![chunk])
@@ -1275,13 +1333,11 @@ pub async fn index_manual_vector(
 
 /// Delete file index from vector database
 #[tauri::command]
-pub async fn delete_file_index(file_path: String) -> Result<(), String> {
+pub async fn delete_file_index(file_path: String, app: AppHandle) -> Result<(), String> {
     info!("🗑️ Dosya indeksi siliniyor: {}", file_path);
     
-    // Get VectorDB instance
-    let global_db: tokio::sync::MutexGuard<Option<VectorDB>> = VECTOR_DB.lock().await;
-    let db = global_db.as_ref()
-        .ok_or("Vector DB başlatılmamış. Önce init_vector_db çağırın.")?;
+    // Get VectorDB instance from app state
+    let db = app.state::<VectorDB>();
     
     // Delete file
     db.delete_file(&file_path)
@@ -1316,6 +1372,7 @@ pub async fn analyze_query_intent(query: String) -> Result<QueryIntent, String> 
 pub async fn build_rag_context(
     query: String,
     max_tokens: Option<usize>,
+    app: AppHandle
 ) -> Result<serde_json::Value, String> {
     info!("🔨 RAG context oluşturuluyor: {}", query);
     
@@ -1325,9 +1382,8 @@ pub async fn build_rag_context(
     let intent = pipeline.analyze_intent(&query);
     
     // Build context with database and embedding
-    let global_db = VECTOR_DB.lock().await;
-    let db = global_db.as_ref().ok_or("VectorDB not initialized")?;
-    let result: Result<(String, Vec<ContextSource>), Box<dyn std::error::Error>> = pipeline.build_context(intent.clone(), &query, db).await;
+    let db = app.state::<VectorDB>();
+    let result: Result<(String, Vec<ContextSource>), Box<dyn std::error::Error>> = pipeline.build_context(intent.clone(), &query, &db).await;
     let (context, sources) = result.map_err(|e| format!("Context build hatası: {}", e))?;
     
     info!("✅ Context oluşturuldu: {} tokens", RAGPipeline::estimate_tokens(&context));

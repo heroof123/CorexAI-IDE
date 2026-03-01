@@ -3,93 +3,103 @@
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-// Use modules from lib
-use corex_lib::{
-    collab, commands, docker, gguf, git_commands, mcp, oauth, oauth_backend, 
-    remote, streaming, window_manager, p2p
-};
-use corex_lib::process_monitor::{ProcessMonitor, MonitorState};
-use corex_lib::gguf::GgufState;
-use corex_lib::collab::CollabState;
-use corex_lib::mcp::McpState;
+mod commands;
+mod gguf;
+mod oauth;
+mod oauth_backend;
+mod streaming;
+mod vector_db;
+mod rag_pipeline;
+mod tree_sitter_parser;
+mod collab; // 🆕 WebSocket collaboration
 
-use tauri::Manager;
+use commands::{
+    scan_project,
+    read_file,
+    write_file,
+    create_file,
+    chat_with_ai,
+    chat_with_specific_ai,
+    chat_with_dynamic_ai,
+    create_embedding_bge,
+    test_project,
+    open_terminal,
+    execute_terminal_command,
+    minimize_window,
+    maximize_window,
+    close_window,
+    download_gguf_model,
+    get_all_files,
+    read_file_content,
+    // Vector DB commands
+    init_vector_db,
+    vector_search,
+    index_file_vector,
+    delete_file_index,
+    // RAG Pipeline commands
+    analyze_query_intent,
+    build_rag_context,
+    // Tree-sitter Parser commands
+    parse_file_ast,
+    clear_ast_cache,
+    invalidate_file_cache,
+};
+
+use gguf::{
+    GgufState,
+    load_gguf_model,
+    chat_with_gguf_model,
+    chat_with_gguf_vision, // 🆕 Vision AI
+    unload_gguf_model,
+    get_gguf_model_status,
+    get_gpu_memory_info,
+    read_gguf_metadata,
+    check_cuda_support,
+};
+
+use oauth::oauth_authenticate;
+use oauth_backend::{exchange_oauth_token, refresh_oauth_token};
+use streaming::{chat_with_streaming, chat_with_http_streaming};
+
 use std::sync::{Arc, Mutex};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::init();
-
+    
     // 🎯 CUDA Kernel Cache - Prevent recompilation
     #[cfg(feature = "cuda")]
     {
-        std::env::set_var("CUDA_CACHE_DISABLE", "0"); // Enable cache
-        std::env::set_var("CUDA_CACHE_MAXSIZE", "4294967296"); // 4GB cache
-        std::env::set_var("CUDA_FORCE_PTX_JIT", "0"); // Disable JIT compilation
+        unsafe {
+            std::env::set_var("CUDA_CACHE_DISABLE", "0"); // Enable cache
+            std::env::set_var("CUDA_CACHE_MAXSIZE", "4294967296"); // 4GB cache
+            std::env::set_var("CUDA_FORCE_PTX_JIT", "0"); // Disable JIT compilation
+        }
         log::info!("🎮 CUDA cache enabled - kernels will be cached");
     }
-
+    
     // GGUF state oluştur
     let gguf_state = Arc::new(Mutex::new(GgufState::default()));
-    // MCP state oluştur
-    let mcp_state = McpState::default();
-    // Collaboration state oluştur
-    let collab_state = CollabState::default();
-    // Process monitor state oluştur
-    pub use corex_lib::p2p::P2PState;
-    let p2p_state = P2PState {
-        peers: Arc::new(tokio::sync::Mutex::new(Vec::new())),
-        port: 8090,
-    };
-    let monitor_state = MonitorState(Arc::new(Mutex::new(None)));
-
+    
     tauri::Builder::default()
         .manage(gguf_state.clone())
-        .manage(mcp_state)
-        .manage(collab_state)
-        .manage(p2p_state)
-        .manage(monitor_state.clone())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_store::Builder::new().build())
-        .setup(move |app| {
-            // Initialize VectorDB synchronously on startup, or spawn an async task
-            let app_handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                // HOTFIX: db_path'i src-tauri'nin dışına alıyoruz ki `tauri dev` watcher'ı her data yazımında backend'i baştan derlemesin.
-                let db_path = "../.corex_vector_data";
-                match corex_lib::vector_db::VectorDB::init(db_path).await {
-                    Ok(db) => {
-                        app_handle.manage(db);
-                        log::info!("✅ VectorDB initialized successfully at {}", db_path);
-                    }
-                    Err(e) => {
-                        log::error!("❌ Failed to initialize VectorDB: {}", e);
-                    }
-                }
-            });
-
-            // Initialize ProcessMonitor
-            let mut monitor = monitor_state.0.lock().unwrap();
-            *monitor = Some(ProcessMonitor::new(app.handle().clone()));
-
-            Ok(())
-        })
         .invoke_handler(tauri::generate_handler![
-            commands::scan_project,
-            commands::read_file,
-            commands::write_file,
-            commands::create_file,
-            commands::chat_with_ai,
-            commands::chat_with_specific_ai,
-            commands::chat_with_dynamic_ai,
-            commands::create_embedding_bge,
-            commands::test_project,
-            commands::open_terminal,
-            commands::execute_terminal_command,
-            commands::minimize_window,
-            commands::maximize_window,
-            commands::close_window,
+            scan_project,
+            read_file,
+            write_file,
+            create_file,
+            chat_with_ai,
+            chat_with_specific_ai,
+            chat_with_dynamic_ai,
+            create_embedding_bge,
+            test_project,
+            open_terminal,
+            execute_terminal_command,
+            minimize_window,
+            maximize_window,
+            close_window,
             commands::get_home_dir,
             commands::create_directory,
             commands::delete_file,
@@ -104,88 +114,49 @@ pub fn run() {
             commands::git_push,
             commands::git_pull,
             commands::git_log_file,
-            commands::git_log_project,
             commands::git_blame,
-            git_commands::generate_semantic_commit_message,
-            git_commands::git_create_branch,
-            git_commands::git_smart_commit,
             commands::execute_command,
-            commands::test_provider_connection,
-            gguf::load_gguf_model,
-            gguf::chat_with_gguf_model,
-            gguf::chat_with_gguf_vision,
-            gguf::unload_gguf_model,
-            gguf::get_gguf_model_status,
-            gguf::get_gpu_memory_info,
-            gguf::read_gguf_metadata,
-            gguf::check_cuda_support,
-            commands::download_gguf_model,
-            commands::get_all_files,
-            commands::read_file_content,
-            oauth::oauth_authenticate,
-            oauth_backend::exchange_oauth_token,
-            oauth_backend::refresh_oauth_token,
-            streaming::chat_with_streaming,
-            streaming::chat_with_http_streaming,
+            load_gguf_model,
+            chat_with_gguf_model,
+            chat_with_gguf_vision,
+            unload_gguf_model,
+            get_gguf_model_status,
+            get_gpu_memory_info,
+            read_gguf_metadata,
+            check_cuda_support,
+            download_gguf_model,
+            get_all_files,
+            read_file_content,
+            oauth_authenticate,
+            exchange_oauth_token,
+            refresh_oauth_token,
+            chat_with_streaming,
+            chat_with_http_streaming,
             // Vector DB commands
-            commands::init_vector_db,
-            commands::vector_search,
-            commands::semantic_search,
-            commands::index_file_vector,
-            commands::vector_index_file,
-            commands::index_manual_vector,
-            commands::delete_file_index,
+            init_vector_db,
+            vector_search,
+            index_file_vector,
+            delete_file_index,
             // RAG Pipeline commands
-            commands::analyze_query_intent,
-            commands::build_rag_context,
+            analyze_query_intent,
+            build_rag_context,
             // Tree-sitter Parser commands
-            commands::parse_file_ast,
-            commands::clear_ast_cache,
-            commands::invalidate_file_cache,
-            // MCP commands
-            mcp::start_mcp_server,
-            mcp::stop_mcp_server,
-            mcp::send_mcp_request,
-            mcp::list_mcp_servers,
-            // Window management
-            window_manager::open_new_window,
-            // Plugin System Beta
-            commands::list_plugins,
-            // Collaboration commands
-            collab::create_collab_session,
-            collab::start_collab_server,
-            // Remote Development commands
-            remote::remote_ssh_connect,
-            remote::remote_ssh_list_dir,
-            remote::remote_ssh_read_file,
-            remote::remote_ssh_exec_command,
-            remote::remote_ssh_upload,
-            remote::remote_ssh_download,
-            remote::remote_ssh_create_dir,
-            remote::remote_ssh_delete_file,
-            // Docker integration commands
-            docker::docker_list_containers,
-            docker::docker_list_images,
-            docker::docker_container_action,
-            docker::docker_remove_image,
-            docker::docker_compose_action,
-            // P2P Sync commands
-            p2p::p2p_start_node,
-            p2p::p2p_discover_peers,
-            p2p::p2p_send_sync,
+            parse_file_ast,
+            clear_ast_cache,
+            invalidate_file_cache,
         ])
         .on_window_event(move |_window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 // Uygulama kapanırken cleanup yap
                 log::info!("🔴 Window closing - cleaning up GGUF model...");
-
+                
                 if let Ok(mut state) = gguf_state.lock() {
-                    if !state.models.is_empty() {
-                        log::info!("🧹 Unloading GGUF models from pool...");
-                        state.models.clear();
+                    if state.backend.is_some() {
+                        log::info!("🧹 Cleaning up GGUF backend...");
                         state.backend = None;
+                        state.models.clear();
                         state.backend_initialized = false;
-                        log::info!("✅ All GGUF models unloaded");
+                        log::info!("✅ GGUF model cleaned up");
                     }
                 }
             }

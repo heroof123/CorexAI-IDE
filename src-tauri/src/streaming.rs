@@ -156,9 +156,9 @@ pub async fn chat_with_http_streaming(
         .map_err(|e| format!("HTTP request failed: {}", e))?;
     
     if !response.status().is_success() {
-        let status = response.status();
+        let status_code = response.status();
         let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-        return Err(format!("HTTP error ({}): {}", status, error_text));
+        return Err(format!("HTTP error ({}): {}", status_code, error_text));
     }
     
     let mut stream = response.bytes_stream();

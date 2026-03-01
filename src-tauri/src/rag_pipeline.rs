@@ -184,7 +184,7 @@ mod tests {
             QueryIntent::Refactor { symbol } => {
                 assert_eq!(symbol, "calculateTotal");
             }
-            _ => panic!("Expected Refactor intent"),
+            _ => panic!("Expected Refactor intent, got: {:?}", intent),
         }
         
         // Test explain intent
@@ -193,7 +193,7 @@ mod tests {
             QueryIntent::Explain { symbol } => {
                 assert_eq!(symbol, "UserService");
             }
-            _ => panic!("Expected Explain intent"),
+            _ => panic!("Expected Explain intent, got: {:?}", intent),
         }
         
         // Test debug intent
@@ -202,14 +202,14 @@ mod tests {
             QueryIntent::Debug { file } => {
                 assert_eq!(file, "main.ts");
             }
-            _ => panic!("Expected Debug intent"),
+            _ => panic!("Expected Debug intent, got: {:?}", intent),
         }
         
         // Test general intent
         let intent = pipeline.analyze_intent("hello world");
         match intent {
             QueryIntent::General => {}
-            _ => panic!("Expected General intent"),
+            _ => panic!("Expected General intent, got: {:?}", intent),
         }
     }
     

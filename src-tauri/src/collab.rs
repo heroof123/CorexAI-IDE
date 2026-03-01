@@ -1,3 +1,4 @@
+use log::{debug, info, warn};
 /**
  * WebSocket Collaboration Server
  * Real-time cursor position sync, user presence, live pair programming
@@ -10,16 +11,11 @@
  * - Heartbeat/keepalive
  * - Broadcast with channel subscribers
  */
-use futures_util::SinkExt;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use log::{debug, info, warn};
-use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::accept_async;
-use tokio::net::TcpListener;
 use uuid::Uuid;
 
 /// Cursor position in the editor with full context
@@ -143,7 +139,7 @@ pub struct CollabSession {
     pub id: String,
     pub users: Arc<RwLock<HashMap<String, UserPresence>>>,
     pub tx: broadcast::Sender<CollabMessage>,
-    pub created_at: i64,
+    pub createdAt: i64,
     pub max_users: usize,
 }
 
@@ -156,8 +152,8 @@ impl CollabSession {
             id: Uuid::new_v4().to_string(),
             users: Arc::new(RwLock::new(HashMap::new())),
             tx,
-            created_at: chrono::Utc::now().timestamp(),
-            max_users: max_users, // Fixed initialization
+            createdAt: chrono::Utc::now().timestamp(),
+            max_users,
         };
 
         info!("📍 New collaboration session created: {}", session.id);
@@ -173,7 +169,7 @@ impl CollabSession {
         }
 
         users.insert(presence.id.clone(), presence.clone());
-        debug!("✅ User added: {} (total: {})", presence.name, users.len());
+        info!("✅ User added: {} (total: {})", presence.name, users.len());
 
         let msg = CollabMessage::UserJoin { user: presence };
         let _ = self.tx.send(msg);
@@ -249,16 +245,18 @@ impl CollabSession {
     }
 
     /// Get session info
+    #[allow(dead_code)]
     pub fn info(&self) -> CollabMessage {
         let users = self.users.read();
         CollabMessage::SessionInfo {
             session_id: self.id.clone(),
             users_count: users.len(),
-            created_at: self.created_at,
+            created_at: self.createdAt,
         }
     }
 
     /// Cleanup inactive users (call periodically)
+    #[allow(dead_code)]
     pub fn cleanup_inactive(&self, timeout_secs: i64) {
         let now = chrono::Utc::now().timestamp();
         let mut users = self.users.write();
@@ -275,120 +273,8 @@ impl CollabSession {
     }
 }
 
-/// Global collaboration state managed by Tauri
-pub struct CollabState {
-    pub sessions: Arc<RwLock<HashMap<String, Arc<CollabSession>>>>,
-}
-
-impl Default for CollabState {
-    fn default() -> Self {
-        Self {
-            sessions: Arc::new(RwLock::new(HashMap::new())),
-        }
-    }
-}
-
-// --------------------
-// TAURI COMMANDS
-// --------------------
-
-#[tauri::command]
-pub async fn create_collab_session(
-    state: tauri::State<'_, CollabState>,
-) -> Result<String, String> {
-    let session = Arc::new(CollabSession::new(10));
-    let id = session.id.clone();
-    
-    let mut sessions = state.sessions.write();
-    sessions.insert(id.clone(), session);
-    
-    info!("🚀 Created collab session: {}", id);
-    Ok(id)
-}
-
-#[tauri::command]
-pub async fn start_collab_server(
-    state: tauri::State<'_, CollabState>,
-    port: u16,
-) -> Result<String, String> {
-    let addr = format!("0.0.0.0:{}", port);
-    let listener = TcpListener::bind(&addr).await.map_err(|e| e.to_string())?;
-    let sessions = state.sessions.clone();
-
-    info!("📡 Collaboration server listening on {}", addr);
-
-    tokio::spawn(async move {
-        while let Ok((stream, _)) = listener.accept().await {
-            let sessions = sessions.clone();
-            tokio::spawn(async move {
-                if let Ok(ws_stream) = accept_async(stream).await {
-                    handle_connection(ws_stream, sessions).await;
-                }
-            });
-        }
-    });
-
-    Ok(format!("Server started on {}", addr))
-}
-
-async fn handle_connection(
-    mut ws_stream: tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
-    sessions: Arc<RwLock<HashMap<String, Arc<CollabSession>>>>,
-) {
-    use futures_util::StreamExt;
-    
-    // Simple handshake: First message must be "join_session <id>"
-    if let Some(Ok(Message::Text(text))) = ws_stream.next().await {
-        if text.starts_with("join_session ") {
-            let session_id = text.replace("join_session ", "");
-            let session = {
-                let s = sessions.read();
-                s.get(&session_id).cloned()
-            };
-
-            if let Some(session) = session {
-                let mut rx = session.tx.subscribe();
-                let (mut ws_sender, mut ws_receiver) = ws_stream.split();
-
-                // Forward broadcast messages to this client
-                let mut send_task = tokio::spawn(async move {
-                    while let Ok(msg) = rx.recv().await {
-                        if let Ok(json) = serde_json::to_string(&msg) {
-                            if ws_sender.send(Message::Text(json.into())).await.is_err() {
-                                break;
-                            }
-                        }
-                    }
-                });
-
-                // Handle messages from this client
-                let session_clone = session.clone();
-                let mut recv_task = tokio::spawn(async move {
-                    while let Some(Ok(Message::Text(text))) = ws_receiver.next().await {
-                        if let Ok(msg) = serde_json::from_str::<CollabMessage>(&text) {
-                            match msg {
-                                CollabMessage::CursorMove { user_id, cursor } => {
-                                    session_clone.update_cursor(&user_id, cursor);
-                                }
-                                _ => {
-                                    // Broadcast other messages
-                                    let _ = session_clone.tx.send(msg);
-                                }
-                            }
-                        }
-                    }
-                });
-
-                tokio::select! {
-                    _ = (&mut send_task) => recv_task.abort(),
-                    _ = (&mut recv_task) => send_task.abort(),
-                };
-            }
-        }
-    }
-}
-
 /// User color palette (predefined for consistency)
+#[allow(dead_code)]
 const USER_COLORS: &[&str] = &[
     "#FF6B6B", // Red - warm, energetic
     "#4ECDC4", // Teal - calm, collaborative
@@ -400,6 +286,7 @@ const USER_COLORS: &[&str] = &[
     "#85C1E2", // Light Blue - peaceful
 ];
 
+#[allow(dead_code)]
 pub fn get_user_color(index: usize) -> String {
     USER_COLORS[index % USER_COLORS.len()].to_string()
 }
