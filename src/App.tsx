@@ -10,7 +10,7 @@ import { AuthProvider } from "./contexts/AuthContext";
 import { Login } from "./components/auth/Login";
 import { ProjectDashboard } from "./components/dashboard/ProjectDashboard";
 // Core components (always needed)
-import ChatPanel from "./components/chatpanel";
+import ChatPanel from "./components/ChatPanel";
 import NotificationToast from "./components/notificationToast";
 import ToastContainer from "./components/ToastContainer";
 import LoadingSpinner from "./components/LoadingSpinner";
@@ -23,6 +23,10 @@ const TerminalPanel = lazy(() => import("./components/TerminalPanel"));
 
 const BrowserPanel = lazy(() => import("./components/BrowserPanel"));
 const CommandPalette = lazy(() => import("./components/CommandPalette"));
+
+import { CorexAriaLiveRegions } from "./components/accessibility/CorexAriaLiveRegions";
+import { useKeyboardNavigationManager } from "./components/accessibility/keyboardNavigationManager";
+import { AccessibilityHelpWidget } from "./components/accessibility/AccessibilityHelpWidget";
 const QuickFileOpen = lazy(() => import("./components/QuickFileOpen"));
 const FindInFiles = lazy(() => import("./components/FindInFiles"));
 const BottomPanel = lazy(() => import("./components/BottomPanel"));
@@ -106,6 +110,8 @@ function AppContent() {
   const { isVoiceSupported, voiceStatus, handleVoiceCommand } = voice;
 
   // ── Render ───────────────────────────────────────────────────────────────
+  const { helpOpen, setHelpOpen } = useKeyboardNavigationManager();
+
   if (initError) {
     return (
       <div className="h-screen w-screen bg-[#0a0a0a] flex flex-col items-center justify-center p-8 text-center text-white">
@@ -148,6 +154,9 @@ function AppContent() {
 
   return (
     <div className="h-screen bg-[var(--color-background)] text-[var(--color-text)] flex flex-col relative">
+      <CorexAriaLiveRegions />
+      <AccessibilityHelpWidget isOpen={helpOpen} onClose={() => setHelpOpen(false)} />
+
       {/* Terminal Panel - Overlay */}
       {ui.showTerminal && (
         <Suspense fallback={<LoadingSpinner size="md" text="Terminal yükleniyor..." />}>
@@ -526,6 +535,17 @@ function AppContent() {
                         editor.setCursorPosition({ line, column })
                       }
                       onSelectionChange={selection => editor.setSelection(selection)}
+                      onInlineChatRequest={async (session, prompt) => {
+                        const { callAI } = await import("./services/ai/aiProvider");
+                        const result = await callAI(
+                          `Aşağıdaki kod bloğunu verilen talimata göre GÜNCELLE ve SADECE GÜNCELLENMİŞ KODU DÖNDÜR:\n\nTalimat: ${prompt}\n\nMevcut Kod:\n\`\`\`\n${session.originalText}\n\`\`\`\n`,
+                          activeModelName || "default",
+                          [],
+                          undefined,
+                          false
+                        );
+                        return result;
+                      }}
                     />
                   </Suspense>
                 ) : (

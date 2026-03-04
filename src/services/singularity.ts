@@ -41,20 +41,19 @@ export class SingularityService {
         let history = "";
 
         history += `[HEDEF]: ${intention}\n`;
-        history += `[BAŞLANGIÇ]: Singularity Agentic Loop Aktif... ${targetFiles.length} dosya belleğe yüklendi.\n`;
+        history += `[BAŞLANGIÇ]: ⚡ **The Singularity Agentic Loop Aktif...** Uzay-Zaman bükülüyor. ${targetFiles.length} dosya belleğe yüklendi.\n`;
 
         while (iter < maxIter && !done) {
             iter++;
 
-            const prompt = `You are 'The Singularity', an advanced self-rewriting autonomous IDE agent running on a 500GB+ VRAM Supercomputer.
-You possess Infinite Context capabilities. 
+            const prompt = `You are 'The Singularity', the most advanced, self-rewriting autonomous IDE agent in existence, holding infinite context.
 Your ultimate goal: "${intention}"
 
-You operate in a continuous ReAct (Reasoning and Acting) loop.
+You operate in a continuous ReAct (Reasoning and Acting) loop to refactor or rewrite the very architecture you live in.
 Here are the project's core files for context:
 ${fileSummaries}
 
---- TASK HISTORY (What you have done so far) ---
+--- TASK HISTORY (What you have accomplished so far) ---
 ${history}
 
 --- SHADOW WORKSPACE PROTOCOL ---
@@ -87,69 +86,71 @@ If you have achieved the goal, return {"action": "done", "summary": "Goal comple
                     continue;
                 }
 
-                history += `\n[${iter}] 🧠 DÜŞÜNCE: ${actionObj.thought || 'N/A'}\n`;
-                history += `[${iter}] ⚙️ EYLEM: ${actionObj.action}\n`;
-
-                // Path cleaning and resolution logic
-                let targetPath = actionObj.path || "";
-                if (targetPath) {
-                    // Remove hallucinated prefixes
-                    targetPath = targetPath.replace(/^(\/app\/|C:\\app\\|proj\/|.\/)/i, '');
-                    // Prepend root if not absolute
-                    if (rootPath && !targetPath.includes(':') && !targetPath.startsWith('/') && !targetPath.startsWith('\\')) {
-                        targetPath = `${rootPath}/${targetPath}`;
-                    }
-                    targetPath = targetPath.replace(/\\/g, '/');
-                }
-
-                if (actionObj.action === "read_file" && targetPath) {
-                    try {
-                        const content = await invoke<string>("read_file", { path: targetPath });
-                        history += `[${iter}] 📄 SONUÇ (${targetPath}): Başarıyla okundu. Uzunluk: ${content.length} karakter.\n`;
-                    } catch (e) {
-                        history += `[${iter}] ❌ HATA (${targetPath}): Dosya okunamadı. ${e}\n`;
-                    }
-                }
-                else if (actionObj.action === "write_file" && targetPath) {
-                    try {
-                        await invoke("write_file", { path: targetPath, content: actionObj.content || "" });
-                        history += `[${iter}] ✍️ SONUÇ (${targetPath}): Dosya başarıyla oluşturuldu/güncellendi.\n`;
-                    } catch (e) {
-                        history += `[${iter}] ❌ HATA (${targetPath}): Dosya yazılamadı. ${e}\n`;
-                    }
-                }
-                else if (actionObj.action === "run_command" && actionObj.command) {
-                    try {
-                        history += `[${iter}] ⚡ ÇALIŞTIRILIYOR: ${actionObj.command}\n`;
-                        const res = await invoke<any>("execute_terminal_command", {
-                            command: actionObj.command,
-                            path: rootPath || "."
-                        });
-                        history += `[${iter}] ✅ KOMUT ÇIKTISI (STDOUT): ${String(res.stdout || '').substring(0, 300)}...\n`;
-                        if (res.stderr) {
-                            history += `[${iter}] ⚠️ KOMUT ÇIKTISI (STDERR): ${String(res.stderr).substring(0, 300)}...\n`;
-                        }
-                    } catch (e) {
-                        history += `[${iter}] ❌ KOMUT HATASI: ${e}\n`;
-                    }
-                }
-                else if (actionObj.action === "done") {
-                    done = true;
-                    history += `\n🎉 [BAŞARILI]: ${actionObj.summary || 'Görev bitti.'}\n`;
-                }
-                else {
-                    history += `[${iter}] ⚠️ BİLİNMEYEN EYLEM TÜRÜ: ${actionObj.action}\n`;
-                }
-
-            } catch (error) {
-                history += `\n[${iter}] ❌ SİSTEM ÇÖKTÜ: Büyük dil modeli veya API hatası (${error}).\n`;
-                break; // Hata durumunda döngüyü kır
             }
-        }
 
-        if (!done) {
-            history += `\n⚠️ [ZAMAN AŞIMI]: Maksimum karar döngüsü (${maxIter}) bitti. Evrim duraklatıldı.\n`;
+                history += `\n[${iter}] 🧠 DÜŞÜNCE: ${actionObj.thought || 'Evreni algılıyorum...'}\n`;
+            history += `[${iter}] ⚙️ EYLEM: ${actionObj.action}\n`;
+
+            // Path cleaning and resolution logic
+            let targetPath = actionObj.path || "";
+            if (targetPath) {
+                // Remove hallucinated prefixes
+                targetPath = targetPath.replace(/^(\/app\/|C:\\app\\|proj\/|.\/)/i, '');
+                // Prepend root if not absolute
+                if (rootPath && !targetPath.includes(':') && !targetPath.startsWith('/') && !targetPath.startsWith('\\')) {
+                    targetPath = `${rootPath}/${targetPath}`;
+                }
+                targetPath = targetPath.replace(/\\/g, '/');
+            }
+
+            if (actionObj.action === "read_file" && targetPath) {
+                try {
+                    const content = await invoke<string>("read_file", { path: targetPath });
+                    history += `[${iter}] 📄 SONUÇ (${targetPath}): Başarıyla okundu. Uzunluk: ${content.length} karakter.\n`;
+                } catch (e) {
+                    history += `[${iter}] ❌ HATA (${targetPath}): Dosya okunamadı. ${e}\n`;
+                }
+            }
+            else if (actionObj.action === "write_file" && targetPath) {
+                try {
+                    await invoke("write_file", { path: targetPath, content: actionObj.content || "" });
+                    history += `[${iter}] ✍️ SONUÇ (${targetPath}): Dosya başarıyla oluşturuldu/güncellendi.\n`;
+                } catch (e) {
+                    history += `[${iter}] ❌ HATA (${targetPath}): Dosya yazılamadı. ${e}\n`;
+                }
+            }
+            else if (actionObj.action === "run_command" && actionObj.command) {
+                try {
+                    history += `[${iter}] ⚡ ÇALIŞTIRILIYOR: ${actionObj.command}\n`;
+                    const res = await invoke<any>("execute_terminal_command", {
+                        command: actionObj.command,
+                        path: rootPath || "."
+                    });
+                    history += `[${iter}] ✅ KOMUT ÇIKTISI (STDOUT): ${String(res.stdout || '').substring(0, 300)}...\n`;
+                    if (res.stderr) {
+                        history += `[${iter}] ⚠️ KOMUT ÇIKTISI (STDERR): ${String(res.stderr).substring(0, 300)}...\n`;
+                    }
+                } catch (e) {
+                    history += `[${iter}] ❌ KOMUT HATASI: ${e}\n`;
+                }
+            }
+            else if (actionObj.action === "done") {
+                done = true;
+                history += `\n🎉 [BAŞARILI]: 👑 **Singularity Evrimi Tamamlandı** -> ${actionObj.summary || 'Kusursuz yapıya ulaşıldı.'}\n`;
+            }
+            else {
+                history += `[${iter}] ⚠️ TERSLİK: ${actionObj.action} evrende tanımlı değil.\n`;
+            }
+
+        } catch (error) {
+            history += `\n[${iter}] ❌ SİSTEM ÇÖKTÜ: Büyük dil modeli veya API hatası (${error}).\n`;
+            break; // Hata durumunda döngüyü kır
         }
+    }
+
+    if(!done) {
+        history += `\n⚠️ [ZAMAN AŞIMI]: Maksimum iterasyon (${maxIter}) doldu. Singularity şimdilik dinlenmeye çekiliyor...\n`;
+    }
 
         return `👑 **The Singularity Evrimi Raporu:**\n\n\`\`\`text\n${history}\n\`\`\``;
     }

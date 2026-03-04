@@ -4,16 +4,10 @@ import ProactiveSuggestions from "./ProactiveSuggestions";
 import { useLanguage } from "../contexts/LanguageContext";
 import { agentService } from "../services/agentService";
 import { getAutonomyConfig } from "../services/ai";
+import MarkersView from "./MarkersView";
+import { markersService, MarkerInfo } from "../services/markersService";
 
-interface Problem {
-  id: string;
-  file: string;
-  line: number;
-  column: number;
-  severity: "error" | "warning" | "info";
-  message: string;
-  source: string;
-}
+
 
 interface BottomPanelProps {
   isVisible: boolean;
@@ -46,7 +40,7 @@ function BottomPanel({
   const [activeTab, setActiveTab] = useState<
     "problems" | "output" | "terminal" | "actions" | "suggestions"
   >("problems");
-  const [problems, setProblems] = useState<Problem[]>([]);
+  const [problems, setProblems] = useState<MarkerInfo[]>([]);
   const [output, setOutput] = useState<string[]>([]);
   const [terminalOutput, setTerminalOutput] = useState<string[]>([]);
   const { t } = useLanguage();
@@ -59,7 +53,7 @@ function BottomPanel({
   }, [fileIndex, currentFile]);
 
   const analyzeProblems = () => {
-    const detectedProblems: Problem[] = [];
+    const detectedProblems: MarkerInfo[] = [];
 
     fileIndex.forEach((file, index) => {
       // Simulate TypeScript/JavaScript problems
@@ -104,9 +98,9 @@ function BottomPanel({
               file: file.path,
               line: lineIndex + 1,
               column: line.indexOf("TODO") !== -1 ? line.indexOf("TODO") : line.indexOf("FIXME"),
-              severity: "info",
+              severity: "hint", // Changed to hint since info isn't available if using MarkerSeverity without info? Wait, MarkerSeverity has info.
               message: "TODO comment found",
-              source: "Code Analysis",
+              source: "VSCode-AI",
             });
           }
         });
@@ -114,6 +108,8 @@ function BottomPanel({
     });
 
     setProblems(detectedProblems);
+    // Push test problems to markers service so MarkersView can see them globally
+    markersService.setMarkers('simulated', 'System', detectedProblems);
 
     // 🤖 Proactively notify agent of problems
     if (detectedProblems.length > 0) {
@@ -138,31 +134,7 @@ function BottomPanel({
     }
   }, [projectPath, fileIndex.length]);
 
-  const getSeverityIcon = (severity: Problem["severity"]) => {
-    switch (severity) {
-      case "error":
-        return "🔴";
-      case "warning":
-        return "🟡";
-      case "info":
-        return "🔵";
-      default:
-        return "⚪";
-    }
-  };
 
-  const getSeverityColor = (severity: Problem["severity"]) => {
-    switch (severity) {
-      case "error":
-        return "text-red-400";
-      case "warning":
-        return "text-yellow-400";
-      case "info":
-        return "text-blue-400";
-      default:
-        return "text-neutral-400";
-    }
-  };
 
   const getTabCount = (tab: string) => {
     switch (tab) {
@@ -329,44 +301,10 @@ function BottomPanel({
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         {activeTab === "problems" && (
-          <div className="p-2">
-            {problems.length === 0 ? (
-              <div className="text-center text-neutral-500 py-8">
-                <div className="text-2xl mb-2">✅</div>
-                <p className="text-sm">Hiçbir problem bulunamadı!</p>
-              </div>
-            ) : (
-              <div className="space-y-1">
-                {problems.map(problem => (
-                  <div
-                    key={problem.id}
-                    className="flex items-start gap-2 p-2 hover:bg-[var(--color-surface)] rounded cursor-pointer text-xs"
-                    onClick={() => {
-                      // Navigate to file and line
-                      if (onFileSelect) {
-                        onFileSelect(problem.file, problem.line);
-                        addOutput(`📍 ${problem.file.split(/[\\/]/).pop()}:${problem.line} — ${problem.message}`);
-                      } else {
-                        addOutput(`📍 ${problem.file}:${problem.line}`);
-                      }
-                    }}
-                  >
-                    <span className="text-sm">{getSeverityIcon(problem.severity)}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className={`font-medium ${getSeverityColor(problem.severity)}`}>
-                          {problem.message}
-                        </span>
-                        <span className="text-neutral-500">[{problem.source}]</span>
-                      </div>
-                      <div className="text-neutral-400 truncate">
-                        {problem.file.split(/[\\/]/).pop()} ({problem.line}:{problem.column})
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+          <div className="h-full">
+            <MarkersView onFileSelect={(file, line) => {
+              if (onFileSelect) onFileSelect(file, line);
+            }} />
           </div>
         )}
 

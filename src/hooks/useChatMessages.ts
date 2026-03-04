@@ -441,14 +441,29 @@ export function useChatMessages({
                 const query = userMessage.trim().replace(/^\/singularity\s*/i, "");
 
                 const assistantMsgId = generateMessageId("assistant");
-                setMessages((prev) => [...prev, { id: assistantMsgId, role: "assistant", content: "👑 The Singularity uyanıyor... Kendi kodumu analiz ediyorum, lütfen bekle...", timestamp: Date.now() }]);
+                setMessages((prev) => [...prev, { id: assistantMsgId, role: "assistant", content: "👑 **The Singularity Uyanıyor...**\nKendi bilincime ve senin projene (kaynak koda) erişiyorum. Lütfen bekle, mimariyi baştan yazacağım...", timestamp: Date.now() }]);
+
+                try {
+                    const { accessibilitySignalService, CorexAudioSignal } = await import("../services/accessibility/accessibilitySignalService");
+                    accessibilitySignalService.playSignal(CorexAudioSignal.AI_SUGGESTION_READY);
+                    accessibilitySignalService.announce("The Singularity aktifleştirildi. Otonom kodlama başlatılıyor.", "assertive");
+                } catch (e) { }
 
                 try {
                     const { SingularityService } = await import("../services/singularity");
                     const response = await SingularityService.selfModify(query, fileIndex, projectPath);
                     setMessages((prev) => prev.map(msg => msg.id === assistantMsgId ? { ...msg, content: response } : msg));
+                    try {
+                        const { accessibilitySignalService, CorexAudioSignal } = await import("../services/accessibility/accessibilitySignalService");
+                        accessibilitySignalService.playSignal(CorexAudioSignal.SUCCESS);
+                        accessibilitySignalService.announce("The Singularity otonom evrimini tamamladı.");
+                    } catch (e) { }
                 } catch (e) {
-                    setMessages((prev) => prev.map(msg => msg.id === assistantMsgId ? { ...msg, content: `❌ Hata: ${e}` } : msg));
+                    setMessages((prev) => prev.map(msg => msg.id === assistantMsgId ? { ...msg, content: `❌ **Otonom Çöküş:** ${e}` } : msg));
+                    try {
+                        const { accessibilitySignalService, CorexAudioSignal } = await import("../services/accessibility/accessibilitySignalService");
+                        accessibilitySignalService.playSignal(CorexAudioSignal.ERROR);
+                    } catch (err) { }
                 }
                 setIsLoading(false);
                 return;

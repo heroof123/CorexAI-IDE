@@ -6,7 +6,10 @@ import { symbolSearch } from './symbolSearch';
 import { impactAnalysis } from './impactAnalysis';
 import { testWriterAgent } from './testAgent';
 import { pluginService } from './pluginService';
+import { localHistoryService } from './localHistoryService';
 import { invoke } from '@tauri-apps/api/core';
+import { keybindingService } from '../platform/keybindingService';
+import { commandRegistry } from '../platform/commandRegistry';
 
 /**
  * 🆕 TASK 22: Service Initialization and Wiring
@@ -74,6 +77,23 @@ export async function initializeServices(_projectPath: string): Promise<void> {
     await pluginService.loadPlugins();
     console.log('🔌 Plugin system (Beta) started');
 
+    // Modül 5.1: Command Registry & Keybindings Start
+    keybindingService.start();
+
+    // Register Default Platform Commands
+    commandRegistry.registerCommand({
+      id: 'corex.openSettings',
+      title: 'CorexAI: Ayarları Aç',
+      category: 'Preferences',
+      keybinding: { key: 'ctrl+,', weight: 100 },
+      run: () => {
+        const event = new CustomEvent('open-settings');
+        window.dispatchEvent(event);
+      }
+    });
+
+    console.log('⌨️ Keybinding Service started and default commands registered');
+
     isInitialized = true;
     console.log('🎉 All AI-native IDE services initialized successfully');
   } catch (error) {
@@ -107,10 +127,13 @@ export function handleFileSave(filePath: string): void {
   // Queue high-priority analysis for saved file
   backgroundReasoner.queueAnalysis(filePath, 'high');
 
-  // 🧪 Triger Test Writer Agent
+  // 🧪 Triger Test Writer Agent & Local History Snapshot (Modül 4.3)
   invoke<string>("read_file", { path: filePath })
-    .then(content => testWriterAgent.onFileSaved(filePath, content))
-    .catch(err => console.error("❌ Test agent file read error:", err));
+    .then(content => {
+      testWriterAgent.onFileSaved(filePath, content);
+      localHistoryService.saveSnapshot(filePath, content).catch(err => console.error("History save error:", err));
+    })
+    .catch(err => console.error("❌ File read error on save:", err));
 }
 
 /**
@@ -124,6 +147,7 @@ export function shutdownServices(): void {
   console.log('🛑 Shutting down AI-native IDE services...');
 
   backgroundReasoner.stop();
+  keybindingService.stop();
 
   isInitialized = false;
   console.log('✅ Services shut down');

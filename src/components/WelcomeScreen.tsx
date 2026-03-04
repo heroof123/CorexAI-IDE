@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
+import { StartupGenView } from "./StartupGenView";
 import { getRecentProjects, removeRecentProject, RecentProject } from "../services/recentProjects";
 import { sendToAI } from "../services/ai";
 import CorexLogo from "./CorexLogo";
@@ -27,6 +28,7 @@ function WelcomeScreen({ onProjectSelect, onCreateProject }: WelcomeScreenProps)
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
   const [showAIChat, setShowAIChat] = useState(false);
   const [showCreateProject, setShowCreateProject] = useState(false);
+  const [showStartupGen, setShowStartupGen] = useState(false);
   const [projectName, setProjectName] = useState("");
   const [projectTemplate, setProjectTemplate] = useState("react-ts");
 
@@ -844,6 +846,29 @@ NASIL CEVAP VERMELİYİM:`;
               </div>
             </button>
           </div>
+
+          <div className="mb-6 relative z-10">
+            <button
+              onClick={() => setShowStartupGen(true)}
+              className="w-full group relative p-5 rounded-2xl bg-gradient-to-r from-orange-600/[0.15] to-red-600/[0.15] hover:from-orange-600/[0.25] hover:to-red-600/[0.25] border border-orange-500/30 hover:border-orange-500/60 transition-all duration-300 cursor-pointer flex items-center gap-5 overflow-hidden"
+              style={{ pointerEvents: 'auto' }}
+            >
+              <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-orange-500/20 to-transparent blur-xl pointer-events-none group-hover:opacity-100 opacity-50 transition-opacity"></div>
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 p-[1px] shadow-[0_0_20px_rgba(249,115,22,0.4)] shrink-0 z-10">
+                <div className="w-full h-full bg-[#111] rounded-[11px] flex items-center justify-center">
+                  <span className="text-xl group-hover:scale-110 transition-transform duration-300">🚀</span>
+                </div>
+              </div>
+              <div className="flex-1 text-left z-10">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="text-orange-400 font-black tracking-widest uppercase text-sm drop-shadow-[0_0_5px_rgba(249,115,22,0.5)]">The Startup Generator</h3>
+                  <span className="px-1.5 py-0.5 roundedbg-orange-600/20 text-orange-300 text-[8px] font-bold border border-orange-600/30">AI Magic</span>
+                </div>
+                <p className="text-neutral-400 text-xs font-mono">Bir cümleyle hayalindeki Web Projesini / Şirketi anında sıfırdan kodlat.</p>
+              </div>
+            </button>
+          </div>
+
           {/* Recent Projects - Smaller */}
           {recentProjects.length > 0 && (
             <div className="mt-6">
@@ -1091,6 +1116,19 @@ NASIL CEVAP VERMELİYİM:`;
             </div>
           )}
         </div>
+
+        {/* Startup Generator Modal */}
+        {showStartupGen && (
+          <div className="absolute inset-0 z-50 animate-fade-in pointer-events-auto">
+            <StartupGenView />
+            <button
+              onClick={() => setShowStartupGen(false)}
+              className="absolute top-6 right-6 w-10 h-10 bg-black/50 border border-white/10 rounded-full flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-all z-[60]"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Create Project Modal */}
         {showCreateProject && (

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import FileManager from "./FileManager";
 import WorkspaceManager from "./WorkspaceManager";
 import DatabaseBrowser from "./DatabaseBrowser";
@@ -7,6 +6,8 @@ import TaskManager from "./TaskManager";
 import DockerIntegration from "./DockerIntegration";
 import AccountsPanel from "./AccountsPanel";
 import { MCPPanel } from "./MCPPanel";
+import SearchView from "./SearchView";
+import ScmHistoryView from "./git/ScmHistoryView";
 
 import { useLanguage } from "../contexts/LanguageContext";
 import { FileIndex } from '../types/index';
@@ -68,127 +69,7 @@ export default function SidePanel({
   fileIndex = [],
 }: SidePanelProps) {
   const { t } = useLanguage();
-  const [searchTerm, setSearchTerm] = useState("");
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-
-  // Search functionality
-  const handleSearch = async (term: string) => {
-    setSearchTerm(term);
-    if (!term.trim()) {
-      setSearchResults([]);
-      return;
-    }
-
-    setIsSearching(true);
-    // Simulate search
-    setTimeout(() => {
-      const results = files
-        .filter(file => file.toLowerCase().includes(term.toLowerCase()))
-        .map(file => ({
-          file,
-          matches: [{ line: 1, text: `Found in ${file}` }],
-        }));
-      setSearchResults(results);
-      setIsSearching(false);
-    }, 500);
-  };
-
-  const renderSearchView = () => (
-    <div className="h-full flex flex-col bg-[var(--color-background)]">
-      {/* Header */}
-      <div className="px-3 py-2 border-b border-[var(--color-border)]">
-        <h2 className="text-lg font-semibold text-[var(--color-text)] mb-2">{t("search.title")}</h2>
-
-        {/* Search Input */}
-        <div className="space-y-1.5">
-          <input
-            type="text"
-            placeholder={t("search.placeholder")}
-            value={searchTerm}
-            onChange={e => handleSearch(e.target.value)}
-            className="w-full px-3 py-2 bg-[var(--color-background)] border border-[var(--color-border)] rounded text-sm focus:outline-none focus:border-[var(--color-primary)]"
-          />
-          <input
-            type="text"
-            placeholder={t("search.includeFiles")}
-            className="w-full px-3 py-2 bg-[var(--color-background)] border border-[var(--color-border)] rounded text-sm focus:outline-none focus:border-[var(--color-primary)]"
-          />
-          <input
-            type="text"
-            placeholder={t("search.excludeFiles")}
-            className="w-full px-3 py-2 bg-[var(--color-background)] border border-[var(--color-border)] rounded text-sm focus:outline-none focus:border-[var(--color-primary)]"
-          />
-        </div>
-
-        {/* Search Options */}
-        <div className="mt-2 space-y-1">
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" className="rounded" />
-            <span>{t("search.matchCase")}</span>
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" className="rounded" />
-            <span>{t("search.wholeWord")}</span>
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" className="rounded" />
-            <span>{t("search.regex")}</span>
-          </label>
-        </div>
-      </div>
-
-      {/* Results */}
-      <div className="flex-1 overflow-y-auto px-3 py-2">
-        {isSearching ? (
-          <div className="text-center py-8 text-[var(--color-textSecondary)]">
-            <div className="animate-spin text-2xl mb-2">⚙️</div>
-            <p>{t("search.searching")}</p>
-          </div>
-        ) : searchResults.length > 0 ? (
-          <div className="space-y-1.5">
-            <div className="text-sm text-[var(--color-textSecondary)] mb-2">
-              {searchResults.length} results in {searchResults.length} files
-            </div>
-            {searchResults.map((result: any, index: number) => (
-              <div key={index} className="border border-[var(--color-border)] rounded">
-                <div className="px-2 py-1.5 bg-[var(--color-background)] border-b border-[var(--color-border)]">
-                  <button
-                    onClick={() => onFileSelect(result.file)}
-                    className="text-sm font-medium text-[var(--color-text)] hover:text-[var(--color-primary)] transition-colors"
-                  >
-                    📄 {result.file.split("/").pop()}
-                  </button>
-                  <div className="text-xs text-white/70">{result.file}</div>
-                </div>
-                {result.matches.map((match: any, matchIndex: number) => (
-                  <div
-                    key={matchIndex}
-                    className="px-2 py-1.5 hover:bg-[var(--color-hover)] cursor-pointer"
-                  >
-                    <div className="text-xs text-[var(--color-textSecondary)]">
-                      Line {match.line}
-                    </div>
-                    <div className="text-sm font-mono">{match.text}</div>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        ) : searchTerm ? (
-          <div className="text-center py-8 text-[var(--color-textSecondary)]">
-            <div className="text-2xl mb-2">🔍</div>
-            <p>{t("search.noResults")}</p>
-          </div>
-        ) : (
-          <div className="text-center py-8 text-[var(--color-textSecondary)]">
-            <div className="text-2xl mb-2">🔍</div>
-            <p>{t("search.searchWorkspace")}</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  // renderSearchView iptal edildi, harici SearchView componenti kullanılacak
 
   const renderSourceControlView = () => (
     <div className="h-full flex flex-col bg-[var(--color-background)]">
@@ -272,6 +153,11 @@ export default function SidePanel({
             </div>
           </div>
         </div>
+
+        {/* SCM History integrated */}
+        <div className="flex-1 min-h-[200px] border-t border-[var(--color-border)]">
+          <ScmHistoryView repoPath={projectPath} />
+        </div>
       </div>
     </div>
   );
@@ -291,7 +177,7 @@ export default function SidePanel({
 
         {/* Configuration */}
         <div>
-          <select className="w-full px-3 py-2 bg-[var(--color-background)] border border-[var(--color-border)] rounded text-sm">
+          <select title={t("debug.launchProgram")} className="w-full px-3 py-2 bg-[var(--color-background)] border border-[var(--color-border)] rounded text-sm">
             <option>{t("debug.launchProgram")}</option>
             <option>{t("debug.attachProcess")}</option>
             <option>{t("debug.launchChrome")}</option>
@@ -429,7 +315,13 @@ export default function SidePanel({
           />
         );
       case "search":
-        return renderSearchView();
+        return (
+          <SearchView
+            files={files}
+            fileIndex={fileIndex}
+            onFileSelect={onFileSelect}
+          />
+        );
       case "source-control":
         return renderSourceControlView();
       case "run-debug":

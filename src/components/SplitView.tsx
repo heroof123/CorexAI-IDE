@@ -113,15 +113,25 @@ export default function SplitView({
               content={leftFile.content}
               onChange={onLeftChange}
               onSave={() => onSave("left")}
+              onInlineChatRequest={async (session, prompt) => {
+                const { callAI } = await import("../services/ai/aiProvider");
+                const result = await callAI(
+                  `Aşağıdaki kod bloğunu verilen talimata göre GÜNCELLE ve SADECE GÜNCELLENMİŞ KODU DÖNDÜR:\n\nTalimat: ${prompt}\n\nMevcut Kod:\n\`\`\`\n${session.originalText}\n\`\`\`\n`,
+                  "default",
+                  [],
+                  undefined,
+                  false
+                );
+                return result;
+              }}
             />
           </div>
         </div>
 
         {/* Resize Handle */}
         <div
-          className={`w-1 bg-[var(--color-border)] hover:bg-[var(--color-primary)] cursor-col-resize transition-colors ${
-            isDragging ? "bg-[var(--color-primary)]" : ""
-          }`}
+          className={`w-1 bg-[var(--color-border)] hover:bg-[var(--color-primary)] cursor-col-resize transition-colors ${isDragging ? "bg-[var(--color-primary)]" : ""
+            }`}
           onMouseDown={handleMouseDown}
         >
           <div className="w-full h-full flex items-center justify-center">
@@ -142,6 +152,18 @@ export default function SplitView({
               content={rightFile.content}
               onChange={onRightChange}
               onSave={() => onSave("right")}
+              onInlineChatRequest={async (session, prompt) => {
+                const { callAI } = await import("../services/ai/aiProvider");
+                // Get active model name conceptually, but since we are outside component hook we just use 'default'
+                const result = await callAI(
+                  `Aşağıdaki kod bloğunu verilen talimata göre GÜNCELLE ve SADECE GÜNCELLENMİŞ KODU DÖNDÜR:\n\nTalimat: ${prompt}\n\nMevcut Kod:\n\`\`\`\n${session.originalText}\n\`\`\`\n`,
+                  "default",
+                  [],
+                  undefined,
+                  false
+                );
+                return result;
+              }}
             />
           </div>
         </div>

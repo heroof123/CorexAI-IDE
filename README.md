@@ -20,6 +20,7 @@
 ## ✨ Features
 
 ### 🤖 AI Integration
+
 - **Local LLM Support** - LM Studio, Ollama, GGUF models
 - **Advanced GGUF Engine** - Native llama-cpp integration with auto-VRAM estimation and GPU/CPU fallback
 - **Smart Code Completion** - Context-aware suggestions using RAG (Retrieval Augmented Generation)
@@ -27,38 +28,42 @@
 - **Privacy First** - All AI processing stays on your machine
 
 ### 📝 Editor
+
 - **Monaco Editor** - Full VS Code-like experience
 - **AI-Native Editing** - Automated fixes, diff-based code application with safety backups
 - **Universal Syntax** - Tree-sitter powered analysis for 100+ languages
 - **Intelligent Navigation** - Symbol-based search and project-wide reference tracking
 
 ### 🔧 Development Tools
+
 - **Git Integration** - Visual diffs, commit history, and automated summaries
 - **Integrated Terminal** - AI-connected terminal with safe command execution
 - **RAG Pipeline** - Vector database (LanceDB) powered codebase indexing
 - **Task Kanban** - Automated task extraction from comments (TODO/FIXME)
 
 ### 🎨 User Interface
+
 - **Premium Glassmorphism** - Futuristic translucent panels and neon accents
 - **Ultra-Responsive** - Throttled/debounced UI for peak performance
 - **Visual Project Graph** - Dynamic structure visualization
 - **Accessibility** - High contrast themes and clear typography
 
-### 🌌 Futuristic AI (The Singularity)
-- **Self-Healing & Modifying** - The IDE can write, compile, and upgrade its own source code on the fly.
-- **Legacy Whisperer** - AI Archeology engine to decrypt and modernize ancient codebases (COBOL, Delphi).
-- **Git-Style AI Chat** - Version control your conversations. Branch out and explore parallel dimensions.
-- **Zero Latency & Oracle** - Speculative background compilation and pre-bug prophecy tracking.
-- **Cognitive Tools** - Polyglot Engine, Blackhole GC, Synesthetic View, and Code DNA Splicing for unmatched power.
+### 🌌 The Singularity & Futuristic Arsenal
+
+- **The Singularity Engine** - An autonomous self-modifying, self-healing core. The IDE can write, compile, and upgrade its own source code on the fly without human intervention.
+- **The Startup Generator** - A majestical AI architect that takes a single idea and autonomously scaffolds an entire production-ready project (routing, UI, configurations) into existence.
+- **What-If Sandbox (Quantum Universe)** - Simulate parallel coding dimensions. "What if we rewrote this in Rust?" - the IDE simulates the entire universe and reports the outcome before you hit save.
+- **Legacy Whisperer & Code Oracle** - AI Archeology engine to decrypt ancient codebases, and speculative pre-bug prophecy tracking to catch errors before you even type them.
+- **Impregnable Defense** - Protected by a fortress of autonomous test shields (40+ CI suites) ensuring AI agents cannot destroy the core while rewriting it.
 
 ---
 
-- **v1.0.0 Release (Milestone Complete)**: 
-    - 🔌 **Full MCP Integration**: Tool-calling support for local/remote servers.
-    - 🧩 **Extension Marketplace**: Browse and manage plugins with a premium UI.
-    - 🎓 **Interactive Academy**: Personal AI tutor analyzing your code.
-    - ⚔️ **Model Roulette**: Side-by-side multi-LLM comparison arena.
-    - 📚 **Stable API**: Dedicated documentation for extension developers.
+- **v1.0.0 Release (Milestone Complete)**:
+  - 🔌 **Full MCP Integration**: Tool-calling support for local/remote servers.
+  - 🧩 **Extension Marketplace**: Browse and manage plugins with a premium UI.
+  - 🎓 **Interactive Academy**: Personal AI tutor analyzing your code.
+  - ⚔️ **Model Roulette**: Side-by-side multi-LLM comparison arena.
+  - 📚 **Stable API**: Dedicated documentation for extension developers.
 - **Robust GGUF Support**: Fixed context length issues and optimized batch processing.
 - **Security Hardening**: Secure storage for all API keys, shell injection protection, and safe terminal commands.
 - **RAG Optimization**: Vector DB distance-based filtering and smart code chunking for 10x better context.
@@ -99,6 +104,7 @@ npm run tauri:dev
 #### Platform-Specific Notes
 
 **Windows (PowerShell or CMD):**
+
 ```cmd
 git clone https://github.com/heroof123/CorexAI.git
 cd CorexAI
@@ -107,6 +113,7 @@ npm run tauri:dev
 ```
 
 **Linux/macOS:**
+
 ```bash
 git clone https://github.com/heroof123/CorexAI.git
 cd CorexAI
@@ -121,21 +128,27 @@ npm run tauri:dev
 #### Build Options
 
 **Default Build (Vulkan-enabled, recommended for AMD/Intel/most users)**
+
 ```bash
 npm run tauri:build
 ```
+
 Vulkan backend is enabled by default, no extra setup required. Works on most systems.
 
 **CPU-Only Build (No GPU acceleration)**
+
 ```bash
 npm run tauri:build:cpu
 ```
+
 Pure CPU inference, slowest but most compatible.
 
 **CUDA Build (NVIDIA GPU acceleration)**
+
 ```bash
 npm run tauri:build:cuda
 ```
+
 Requires NVIDIA GPU and CUDA toolkit installed. Fastest for NVIDIA users.
 
 **Output:** `src-tauri/target/release/`
@@ -143,11 +156,13 @@ Requires NVIDIA GPU and CUDA toolkit installed. Fastest for NVIDIA users.
 #### Windows Users
 
 All commands work the same in PowerShell or Command Prompt:
+
 ```cmd
 npm run tauri:build
 ```
 
 **Common Commands:**
+
 ```cmd
 # Development
 npm run tauri:dev
@@ -180,6 +195,7 @@ VITE_MICROSOFT_CLIENT_ID=your_microsoft_client_id
 ```
 
 **Backend (Rust):**
+
 ```bash
 export GITHUB_CLIENT_SECRET="your_secret"
 export MICROSOFT_CLIENT_SECRET="your_secret"
@@ -212,6 +228,7 @@ File → Open Folder → Select your project
 ```
 
 The IDE will automatically:
+
 - Index all files
 - Analyze project structure
 - Enable AI features
@@ -223,6 +240,7 @@ Click AI icon → Type your question
 ```
 
 Examples:
+
 - "Explain this function"
 - "Find bugs in this file"
 - "Refactor this code"
@@ -262,6 +280,7 @@ corex/
 ### Tech Stack
 
 **Frontend:**
+
 - React 19
 - TypeScript 5.8
 - Tailwind CSS
@@ -269,6 +288,7 @@ corex/
 - Xenova Transformers
 
 **Backend:**
+
 - Tauri 2
 - Rust 2021
 - llama.cpp (via llama-cpp-rs)
@@ -292,6 +312,7 @@ corex/
 ### Build Errors
 
 **CUDA not found:**
+
 ```bash
 # Build without CUDA (CPU-only)
 cargo build
@@ -301,6 +322,7 @@ cargo build --features cuda
 ```
 
 **Node modules error:**
+
 ```bash
 rm -rf node_modules package-lock.json
 npm install
@@ -309,11 +331,13 @@ npm install
 ### Runtime Errors
 
 **AI not responding:**
+
 - Check LM Studio is running
 - Verify model is loaded
 - Check AI Settings panel
 
 **OAuth not working:**
+
 - Verify .env file exists
 - Check client ID/secret
 - Ensure callback URL matches
@@ -373,6 +397,7 @@ MIT License - see [LICENSE](LICENSE) file
 ## 🗺️ Roadmap
 
 ### v0.2.x
+
 - [x] Professional Light Theme implementation [x]
 - [x] Visual Project Graph visualization [x]
 - [x] Enhanced GGUF Model Browser & Context Fixes [x]
@@ -382,6 +407,7 @@ MIT License - see [LICENSE](LICENSE) file
 - [x] MCP (Model Context Protocol) Integration [x]
 
 ### v1.0.0 (Release)
+
 - [x] Stable API [x]
 - [x] Full documentation [x]
 - [x] Performance optimizations [x]
@@ -389,15 +415,18 @@ MIT License - see [LICENSE](LICENSE) file
 - [x] Interactive Academy [x]
 - [x] Model Roulette (Arena) [x]
 
-### v1.1.0 - Advanced Intelligence (Gelişmiş Zeka) - [Mevcut]
-- [x] **Sesli Kontrol:** Web Speech API ile eller serbest kod yönetimi.
-- [x] **AI Debug Advisor:** Hata ayıklarken canlı değişken ve stack analizi.
-- [x] **VS Code Uyumluluğu:** Tema ve Snippet içe aktarma desteği.
-- [x] **Gelişmiş Ajan Döngüsü:** MCP araçları ile otonom görev yönetimi.
-- [x] **The Singularity Engine:** Kendi kodunu değiştirebilen otonom sistem.
+### v1.1.0 - Advanced Intelligence (Genişletilmiş Evren) - [Aktif]
+
+- [x] **The Singularity Engine:** Kendi kodunu değiştirebilen devasa otonom sistem.
+- [x] **The Startup Generator:** Tek bir satır fikir ile koca bir şirket/proje kodlayan mimar yapay zeka.
+- [x] **What-If Sandbox:** Paralel evrenlerde kod simülasyonu çalıştıran quantum motoru.
+- [x] **Aşılmaz Kalkanlar:** Yapay zekanın core çökertmesini engelleyen 40+ otonom test duvarı ve güvenlik mimarisi.
+- [x] **Gelişmiş Ajan Döngüsü:** MCP araçları ile tam otonom görev yönetimi ve terminal entegrasyonu.
+- [x] **Sesli Kontrol:** Web Speech API ile eller serbest AI yönetimi.
 - [x] **Futuristic Arsenal:** 15+ sci-fi konsept (Git-Style Chat Branches, Legacy Whisperer, vb.)
 
 ### v1.2.0 - Team & Remote (Planlanan)
+
 - [x] **Remote Development:** SSH/Docker üzerinden uzaktan kodlama.
 - [ ] **Collaborative Coding:** Canlı ortak çalışma modu.
 - [ ] **AI Pair Review:** Pull Request'ler için otomatik AI inceleme asistanı.
@@ -425,26 +454,32 @@ It helps the project grow and motivates us to keep improving it.
 
 ### 🎥 Demo Video
 
-https://github.com/user-attachments/assets/5b4bf839-1704-49b4-bae4-0b9d4f5910a6
+<https://github.com/user-attachments/assets/5b4bf839-1704-49b4-bae4-0b9d4f5910a6>
 
 ### 📷 Screenshots
 
 #### Main Interface
+
 ![CorexAI Main Interface](https://github.com/user-attachments/assets/9a24992e-30b1-4015-998b-48978247eb38)
 
 #### AI Chat Panel
+
 ![AI Chat Panel](https://github.com/user-attachments/assets/c30b9f58-e302-4ab6-a1d0-0e30c5ab5b41)
 
 #### Code Editor
+
 ![Code Editor](https://github.com/user-attachments/assets/4c908837-49cd-40f0-b528-509d76b0ad38)
 
 #### Features Overview
+
 ![Features](https://github.com/user-attachments/assets/c55e346d-c281-48ca-b5d2-39e62ec3d853)
 
 #### Settings Panel
+
 ![Settings](https://github.com/user-attachments/assets/200c79ca-8e21-4fc9-a6af-ad9971b8ef0b)
 
 #### Additional View
+
 ![Additional View](https://github.com/user-attachments/assets/60609853-1da5-4dc3-ac16-2dbc6cbc89ec)
 
 ## 🔒 Security
@@ -464,4 +499,3 @@ https://github.com/user-attachments/assets/5b4bf839-1704-49b4-bae4-0b9d4f5910a6
 ---
 
 **Made with ❤️ by the CorexAI Team**
-

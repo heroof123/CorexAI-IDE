@@ -134,13 +134,22 @@ pub struct TextChange {
     pub text: String,
 }
 
-/// Collaboration session state - thread-safe
+#[derive(Serialize, Deserialize)]
 pub struct CollabSession {
     pub id: String,
+    #[serde(skip)]
     pub users: Arc<RwLock<HashMap<String, UserPresence>>>,
+    #[serde(skip)]
+    #[serde(default = "default_tx")]
     pub tx: broadcast::Sender<CollabMessage>,
-    pub createdAt: i64,
+    #[serde(rename = "createdAt")]
+    pub created_at: i64,
     pub max_users: usize,
+}
+
+fn default_tx() -> broadcast::Sender<CollabMessage> {
+    let (tx, _) = broadcast::channel(1);
+    tx
 }
 
 impl CollabSession {
@@ -152,7 +161,7 @@ impl CollabSession {
             id: Uuid::new_v4().to_string(),
             users: Arc::new(RwLock::new(HashMap::new())),
             tx,
-            createdAt: chrono::Utc::now().timestamp(),
+            created_at: chrono::Utc::now().timestamp(),
             max_users,
         };
 
@@ -251,7 +260,7 @@ impl CollabSession {
         CollabMessage::SessionInfo {
             session_id: self.id.clone(),
             users_count: users.len(),
-            created_at: self.createdAt,
+            created_at: self.created_at,
         }
     }
 

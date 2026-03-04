@@ -1,5 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { markersService } from "../services/markersService";
+import { markersFileDecoration } from "../services/markersFileDecoration";
+import { generateTemplate } from "../services/fileTemplateSnippets";
 
 interface FileManagerProps {
   projectPath: string;
@@ -49,6 +52,14 @@ export default function FileManager({
   } | null>(null);
   const [renameFile, setRenameFile] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [, setMarkersTick] = useState(0);
+
+  useEffect(() => {
+    const unsubscribe = markersService.onDidChangeMarkers(() => {
+      setMarkersTick(t => t + 1);
+    });
+    return unsubscribe;
+  }, []);
 
   // Sahte (Mock) karmaşıklık hesaplayıcı - Path string'ine göre hash üretip renk döner
   const getHeatmapColor = (filePath: string) => {
@@ -159,7 +170,8 @@ export default function FileManager({
       if (type === "folder") {
         await invoke("create_directory", { path: fullPath });
       } else {
-        await invoke("write_file", { path: fullPath, content: "" });
+        const content = generateTemplate(name) || "";
+        await invoke("write_file", { path: fullPath, content });
       }
 
       onFileCreate(fullPath);
@@ -246,6 +258,7 @@ export default function FileManager({
   const renderFileNode = (node: FileNode, depth = 0) => {
     const isSelected = selectedFile === node.path;
     const isRenamed = renameFile === node.path;
+    const decoration = markersFileDecoration.getFileDecoration(node.path);
 
     return (
       <div key={node.path}>
@@ -322,9 +335,22 @@ export default function FileManager({
             />
           ) : (
             <>
-              <span className="flex-1 text-xs truncate text-white/80 group-hover:text-white">
+              <span
+                className="flex-1 text-xs truncate text-white/80 group-hover:text-white"
+                style={{ color: decoration?.color }}
+                title={decoration?.tooltip}
+              >
                 {node.name}
               </span>
+              {decoration?.badge && (
+                <span
+                  className="text-[9px] font-bold px-1 rounded ml-1"
+                  style={{ backgroundColor: decoration.color, color: '#fff' }}
+                  title={decoration.tooltip}
+                >
+                  {decoration.badge}
+                </span>
+              )}
               {!node.isDirectory && isSelected && (
                 <span className="text-xs text-[var(--color-primary)] ml-1">▶</span>
               )}

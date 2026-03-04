@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { FileIndex } from '../types/index';
+import { accessibilitySignalService, CorexAudioSignal } from '../services/accessibility/accessibilitySignalService';
 
 interface SecurityFortressProps {
     fileIndex: FileIndex[];
@@ -17,52 +18,67 @@ export default function SecurityFortress({ fileIndex, onFileClick }: SecurityFor
 
         const timer = setTimeout(() => {
             const issues = [];
+            let foundCritical = false;
+
             const packageJson = fileIndex.find(f => f.path.endsWith('package.json'));
             if (packageJson && packageJson.content.includes('"express"')) {
                 issues.push({
                     id: 1,
-                    type: 'Dependency Watchdog',
+                    type: 'Pwnable Pattern (Express)',
                     severity: 'HIGH',
-                    message: 'Express.js version might be vulnerable to Prototype Pollution. Upgrade recommended.',
+                    message: 'CorexAI: Bu Express.js modülü eski nesil. Prototype Pollution riski taşıyor. Ben olsam hemen Rust\'a (Axum) göç ederdim.',
                     file: packageJson.path
                 });
             }
 
             fileIndex.forEach(f => {
                 if (!f.content) return;
-                if (f.content.includes('SELECT * FROM') && f.content.includes('${')) {
+                // SQL Injection tespiti
+                if (f.content.includes('SELECT ') && f.content.includes('${')) {
                     issues.push({
                         id: Math.random(),
-                        type: 'Injection Hazard (XSS/SQLi)',
+                        type: 'SQL Injection / Query Bypass',
                         severity: 'CRITICAL',
-                        message: 'Potential SQL Injection inside a template literal query.',
+                        message: 'CorexAI Dehşet İçinde!: String interpolation (\\`${var}\\`) ile SQL yazıyorsun. Veritabanını hacklemeleri 3 saniye sürer. Lütfen ORM kullan!',
                         file: f.path
                     });
+                    foundCritical = true;
                 }
-                if (f.content.includes('AWS_ACCESS_KEY') || f.content.includes('PASSWORD=')) {
+                // Secret leak tespiti
+                if (f.content.includes('AWS_ACCESS_KEY') || f.content.includes('PASSWORD=') || f.content.includes('SECRET_KEY')) {
                     issues.push({
                         id: Math.random(),
-                        type: 'Secret Key Leak',
+                        type: 'Mortal Sin: Hardcoded Secret',
                         severity: 'CRITICAL',
-                        message: 'Hardcoded secret or AWS key detected. Delete this immediately!',
+                        message: 'Delirdin mi? Private key veya şifreyi koda gömmüşsün! Bunu public repoya pushlarsan saniyeler içinde botlar yakalar.',
                         file: f.path
                     });
+                    foundCritical = true;
                 }
             });
 
             if (issues.length === 0) {
                 issues.push({
                     id: 'fake1',
-                    type: 'Heuristic Warning',
+                    type: 'Dormant Thread',
                     severity: 'LOW',
-                    message: 'No active rate limiting found for external API endpoints.',
+                    message: 'CorexAI: Kodun güvenli görünüyor, ya da sen açıkları benden bile iyi gizliyorsun. Yine de gözüm üzerinde.',
                     file: 'N/A'
                 })
             }
 
+            if (foundCritical) {
+                accessibilitySignalService.playSignal(CorexAudioSignal.ERROR);
+                accessibilitySignalService.announce("CorexAI güvenlik kulesi kritik zafiyet tespit etti!", "assertive");
+            } else if (issues.some(i => i.severity === 'HIGH')) {
+                accessibilitySignalService.playSignal(CorexAudioSignal.WARNING);
+            } else {
+                accessibilitySignalService.playSignal(CorexAudioSignal.SUCCESS);
+            }
+
             setVulnerabilities(issues);
             setIsScanning(false);
-        }, 1500);
+        }, 2000);
 
         return () => clearTimeout(timer);
     }, [fileIndex]);
@@ -96,7 +112,7 @@ export default function SecurityFortress({ fileIndex, onFileClick }: SecurityFor
                             </div>
                         </div>
 
-                        {vulnerabilities.map(v => (
+                        {vulnerabilities.map((v: any) => (
                             <div key={v.id} onClick={() => v.file !== 'N/A' && onFileClick(v.file)} className="bg-[var(--color-background)] border border-[var(--color-border)] rounded-lg p-3 hover:border-red-500/50 cursor-pointer transition-colors group">
                                 <div className="flex justify-between items-start mb-2">
                                     <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-widest ${v.severity === 'CRITICAL' ? 'bg-red-500 text-white shadow-[0_0_10px_rgba(239,68,68,0.5)]' :

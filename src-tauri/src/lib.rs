@@ -5,6 +5,7 @@
 
 pub mod collab;
 pub mod commands;
+pub mod debug;
 pub mod docker;
 pub mod gguf;
 pub mod git_commands;
@@ -16,6 +17,7 @@ pub mod process_monitor;
 pub mod rag_pipeline;
 pub mod remote;
 pub mod streaming;
+pub mod testing;
 pub mod tree_sitter_parser;
 pub mod vector_db;
 pub mod window_manager;

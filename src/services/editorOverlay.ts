@@ -5,8 +5,9 @@ import * as monaco from "monaco-editor";
 import type { CodeInsight } from "../types/ai-native";
 import { backgroundReasoner } from "./backgroundReasoner";
 import { smartCodeLensProvider } from "./codeLensProvider";
-import { predictiveService } from "./predictiveService";
 import { SymbolResolver } from "./symbolResolver";
+import { registerAICodeActionProvider } from "./editor/aiCodeActionProvider";
+import { registerAdvancedInlineCompletions } from "./editor/advancedInlineCompletions";
 
 /**
  * Editor Overlay
@@ -196,103 +197,41 @@ export class EditorOverlay {
 
   /**
    * 🆕 TASK 12.10: Register code action provider for quick fixes
+   * Delegetes to aiCodeActionProvider (Modül 4.2)
    */
   private registerCodeActionProvider(): void {
-    monaco.languages.registerCodeActionProvider("typescript", {
-      provideCodeActions: (model, range, _context) => {
-        const actions: monaco.languages.CodeAction[] = [];
+    if ((window as any).__corexCodeActionRegistered) return;
+    (window as any).__corexCodeActionRegistered = true;
 
-        // Check if there are any insights at this location
-        const line = range.startLineNumber;
-        const insights = backgroundReasoner.getInsights(model.uri.path);
-        const relevantInsights = insights.filter(i => i.line === line);
-
-        relevantInsights.forEach(insight => {
-          if (insight.category === "complexity") {
-            actions.push({
-              title: "💡 Refactor to reduce complexity",
-              kind: "quickfix",
-              diagnostics: [],
-              edit: {
-                edits: [],
-              },
-            });
-          }
-
-          if (insight.category === "smell") {
-            actions.push({
-              title: "🧹 Extract function",
-              kind: "refactor",
-              diagnostics: [],
-              edit: {
-                edits: [],
-              },
-            });
-          }
-        });
-
-        return {
-          actions,
-          dispose: () => {},
-        };
-      },
-    });
+    // Yalnızca bir kez global olarak kaydetmek daha verimli olur
+    // ama bu class birden fazla editör için yaratılıyorsa guard ekledik.
+    registerAICodeActionProvider();
+    console.log("💎 AI Code Action Provider registered (Modül 4.2)");
   }
 
   /**
    * 🆕 Register Smart Code Lens Provider
    */
   private registerCodeLensProvider(): void {
-    // Register for standard languages
-    const languages = ["typescript", "javascript", "typescriptreact", "javascriptreact"];
+    if ((window as any).__corexCodeLensRegistered) return;
+    (window as any).__corexCodeLensRegistered = true;
 
+    const languages = ["typescript", "javascript", "typescriptreact", "javascriptreact"];
     languages.forEach(lang => {
       monaco.languages.registerCodeLensProvider(lang, smartCodeLensProvider);
     });
-
     console.log("💎 Smart Code Lens Provider registered for:", languages.join(", "));
   }
 
   /**
    * 🔮 Register Predictive Inline Completion Provider (Ghost Text)
+   * Delegates to advancedInlineCompletions (Modül 4.1)
    */
   private registerInlineCompletionProvider(): void {
-    const languages = ["typescript", "javascript", "typescriptreact", "javascriptreact"];
+    if ((window as any).__corexInlineCompletionsRegistered) return;
+    (window as any).__corexInlineCompletionsRegistered = true;
 
-    languages.forEach(lang => {
-      monaco.languages.registerInlineCompletionsProvider(lang, {
-        provideInlineCompletions: async (model, position) => {
-          const filePath = model.uri.path;
-          const content = model.getValue();
-
-          const prediction = await predictiveService.predictNextLine(
-            content,
-            position.lineNumber,
-            position.column,
-            filePath
-          );
-
-          if (!prediction) return { items: [] };
-
-          return {
-            items: [
-              {
-                insertText: prediction,
-                range: new monaco.Range(
-                  position.lineNumber,
-                  position.column,
-                  position.lineNumber,
-                  position.column
-                ),
-              },
-            ],
-          };
-        },
-        disposeInlineCompletions: () => {},
-      });
-    });
-
-    console.log("🔮 Predictive Ghost Text registered for:", languages.join(", "));
+    registerAdvancedInlineCompletions();
   }
 
   /**
